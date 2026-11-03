@@ -1,0 +1,77 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual Environment
+.venv/
+venv/
+env/
+
+# Environment Variables
+.env
+.env.*
+!.env.example
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python Tools
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs
+*.log
+logs/
+
+# Temporary Files
+*.tmp
+*.temp
+
+# RAG / Vector Store
+# src/vectorstore/
+*.faiss
+*.pkl
+
+# Generated / Processed Data
+# 원본(raw)은 Git에 포함하고,
+# 용량이 큰 processed 데이터만 필요에 따라 제외
+# data/processed/
+
+# Model / Hugging Face Cache
+.cache/
+huggingface/
+transformers_cache/
+
+# Local Database
+*.db
+*.sqlite
+*.sqlite3
+
+
+back/data/raw
+
+# 사용자가 올린 이미지 파일 (back/src/db/storage.py)
+uploads/
+
+# ONNX 재정렬 모델 (용량이 커서 git에 올리지 않는다. 서버나 다른 PC에는 직접 복사하거나 python -m src.rag.export_reranker_onnx 로 만든다)
+back/data/onnx/
+
+# Django
+back/db.sqlite3
+back/staticfiles/
+*.log

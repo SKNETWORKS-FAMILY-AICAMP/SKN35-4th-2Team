@@ -1,0 +1,69 @@
+{% load static %}<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CodeClue</title>
+  <link rel="stylesheet" href="{% static 'css/chat.css' %}">
+</head>
+<body>
+  <!-- 로그인, 가입 (로그인하지 않았을 때만 보인다) -->
+  <section id="auth" class="auth" hidden>
+    <div class="auth-card">
+      <h1>CodeClue</h1>
+      <p class="auth-sub">LangChain, LangGraph, MCP 오류를 분석해 주는 개발 도우미</p>
+      <div class="tabs" role="tablist">
+        <button type="button" id="tab-login" role="tab" aria-selected="true">로그인</button>
+        <button type="button" id="tab-signup" role="tab" aria-selected="false">가입</button>
+      </div>
+      <form id="auth-form" autocomplete="on">
+        <label for="auth-username">아이디</label>
+        <input id="auth-username" name="username" autocomplete="username" maxlength="30" required>
+        <label for="auth-password">비밀번호</label>
+        <input id="auth-password" name="password" type="password" autocomplete="current-password" maxlength="128" required>
+        <p id="auth-rules" class="auth-rules" hidden>
+          아이디: 영문 소문자, 숫자, 밑줄(_) 3~20자<br>
+          비밀번호: 8자 이상, 영문과 숫자를 모두 포함, 아이디와 비슷하지 않게
+        </p>
+        <p id="auth-error" class="auth-error" role="alert" hidden></p>
+        <button id="auth-submit" type="submit">로그인</button>
+      </form>
+    </div>
+  </section>
+
+  <div id="app" class="app" hidden>
+    <aside class="sidebar">
+      <button id="new-chat" type="button" class="new-chat">+ 새 대화</button>
+      <nav id="conversations" class="conversations" aria-label="내 대화 목록"></nav>
+      <div class="account">
+        <span id="user-name" class="user-name"></span>
+        <button id="logout" type="button" class="link-button">로그아웃</button>
+      </div>
+    </aside>
+
+    <section class="chat">
+      <header class="topbar">
+        <h1>CodeClue</h1>
+        <p>LangChain, LangGraph, MCP 오류를 분석해 주는 개발 도우미</p>
+      </header>
+
+      <main id="messages" class="messages" aria-live="polite">
+        <div class="welcome" id="welcome">
+          <p>오류 메시지나 궁금한 개념을 물어보세요.</p>
+          <p class="hint">예: LangGraph에서 checkpointer로 대화 상태를 저장하려면 어떻게 하나요?</p>
+        </div>
+      </main>
+
+      <div id="status" class="status" role="status"></div>
+
+      <form id="chat-form" class="composer">
+        <textarea id="question" rows="2" maxlength="4000" placeholder="질문을 입력하세요 (Enter 전송, Shift+Enter 줄바꿈)" aria-label="질문 입력"></textarea>
+        <button id="send" type="submit">보내기</button>
+      </form>
+    </section>
+  </div>
+
+  <script src="{% static 'js/markdown.js' %}" defer></script>
+  <script src="{% static 'js/chat.js' %}" defer></script>
+</body>
+</html>

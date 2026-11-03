@@ -1,0 +1,46 @@
+[project]
+name = "skn35-4th-2team"
+version = "0.1.0"
+description = "CodeClue - LLM/RAG 개발 오류 분석 도우미 (Django 웹 애플리케이션)"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    # 웹 (Django)
+    "django>=5.2,<5.3",  # 5.2 LTS (장기 지원판)
+    "gunicorn>=23.0",
+    "whitenoise>=6.7",
+    # 3차 코어 (LangGraph, RAG, MCP, 멀티모달)
+    "openai>=3.26.0",
+    "python-dotenv>=1.2.4",
+    "langchain[mcp]>=1.4.0",
+    "langchain-community>=0.4.2",
+    "langchain-text-splitters>=1.1.2",
+    "langchain-openai>=1.6.7",
+    "langchain-pinecone>=0.2.13",
+    "mcp[cli]>=2.3.0",
+    "pinecone>=7.3.0",
+    "pinecone-text>=0.11.0",
+    "pillow>=12.3.0",
+    "tiktoken>=0.14.0",
+    "httpx>=0.28.1",
+    "requests>=2.34.2",
+    # 재정렬 (ONNX int8, torch 없이 실행)
+    "onnxruntime>=1.31.0",
+    "tokenizers>=0.20.0",
+    # 대화 이력, 출처, 마스킹 (3차 DB 계층)
+    "sqlalchemy>=2.0",
+    "pymysql>=1.1",
+    "alembic>=1.13",
+    "certifi>=2024.2.2",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+]
+# 재정렬 모델을 ONNX로 변환할 때만 필요하다 (python -m src.rag.export_reranker_onnx). 서버에는 설치하지 않는다.
+export = [
+    "torch>=2.13.0",
+    "transformers>=5.16.1",
+    "onnx>=1.23.2",
+]
