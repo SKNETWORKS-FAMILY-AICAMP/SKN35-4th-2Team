@@ -131,4 +131,5 @@ USE_TZ = True
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # ---------------------------------------------------------------- 질문 처리 한도
+CHAT_IMAGE_UPLOAD_MAX_BYTES = 10_000_000  # 올릴 때 한 장의 최대 크기(10MB). 코어가 DB 한도(기본 2MB)를 넘는 이미지는 알아서 줄여서 저장한다
 CHAT_QUESTION_MAX_CHARS = 4000  # 이전 대화(이력)의 양은 3차 DB 계층이 HISTORY_MAX_TURNS, HISTORY_MAX_TOKENS로 정한다
