@@ -1,13 +1,3 @@
-// 채팅 화면의 동작. 서버와는 아래 "약속"(주소와 형식)으로만 대화한다. 서버가 답을 어떻게 만드는지는 모른다.
-//   POST /api/auth/signup/, /api/auth/login/  {"username", "password"}  → {"user": {...}} 또는 {"error": "..."}
-//   POST /api/auth/logout/ , GET /api/auth/me/ → {"user": {...} 또는 null}
-//   GET  /api/conversations/                → {"conversations": [{"id", "title", "updated_at"}]}
-//   GET  /api/conversations/<id>/           → {"id", "title", "messages": [{"role", "content", "sources"}]}
-//   DELETE /api/conversations/<id>/
-//   POST /api/chat/  {"question": "...", "conversation_id": 12 (이어서 질문할 때만)}
-//     응답은 stage(처리 단계) / token(답변 조각) / sources(출처) / done(전체 답변) / error(오류 문장) 이벤트
-// 답변은 renderMarkdown(markdown.js)으로 그리고, 서버가 준 글은 모두 textContent로만 넣는다(HTML로 실행되지 않게).
-
 const authEl = document.getElementById("auth");
 const appEl = document.getElementById("app");
 const messagesEl = document.getElementById("messages");
@@ -36,8 +26,13 @@ async function api(url, { method = "GET", body } = {}) {
   }
   const response = await fetch(url, options);
   let data = {};
-  try { data = await response.json(); } catch (error) { /* 본문이 없거나 JSON이 아니면 빈 값 */ }
-  if (!response.ok && !data.error) data.error = `서버 오류(${response.status})가 발생했습니다. 잠시 후 다시 시도하고, 계속되면 팀에 알려 주세요.`;
+  try {
+    data = await response.json();
+  } catch (error) {
+    /* 본문이 없거나 JSON이 아니면 빈 값 */
+  }
+  if (!response.ok && !data.error)
+    data.error = `서버 오류(${response.status})가 발생했습니다. 잠시 후 다시 시도하고, 계속되면 팀에 알려 주세요.`;
   return { ok: response.ok, status: response.status, data };
 }
 
@@ -51,7 +46,10 @@ const THEME_KEY = "codeclue-theme";
 const systemDark = window.matchMedia("(prefers-color-scheme: dark)");
 
 function currentTheme() {
-  return document.documentElement.dataset.theme || (systemDark.matches ? "dark" : "light");
+  return (
+    document.documentElement.dataset.theme ||
+    (systemDark.matches ? "dark" : "light")
+  );
 }
 
 function updateThemeButtons() {
@@ -62,12 +60,18 @@ function updateThemeButtons() {
   });
 }
 
-document.querySelectorAll(".theme-toggle").forEach((button) => button.addEventListener("click", () => {
-  const theme = currentTheme() === "dark" ? "light" : "dark";
-  document.documentElement.dataset.theme = theme;
-  try { localStorage.setItem(THEME_KEY, theme); } catch (error) { /* 저장이 막혀 있어도 이번 화면에는 적용된다 */ }
-  updateThemeButtons();
-}));
+document.querySelectorAll(".theme-toggle").forEach((button) =>
+  button.addEventListener("click", () => {
+    const theme = currentTheme() === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = theme;
+    try {
+      localStorage.setItem(THEME_KEY, theme);
+    } catch (error) {
+      /* 저장이 막혀 있어도 이번 화면에는 적용된다 */
+    }
+    updateThemeButtons();
+  }),
+);
 systemDark.addEventListener("change", updateThemeButtons);
 updateThemeButtons();
 
@@ -94,34 +98,56 @@ const tabSignup = document.getElementById("tab-signup");
 let authMode = "login";
 
 function setAuthMode(mode) {
+  // 로그인 ↔ 가입으로 바꾸면 적던 값을 비운다 (같은 탭을 다시 누르면 그대로 둔다)
+  if (mode !== authMode) {
+    authUsername.value = "";
+    authPassword.value = "";
+  }
   authMode = mode;
   tabLogin.setAttribute("aria-selected", String(mode === "login"));
   tabSignup.setAttribute("aria-selected", String(mode === "signup"));
   authSubmit.textContent = mode === "login" ? "로그인" : "가입하고 시작하기";
-  authTitle.textContent = mode === "login" ? "다시 오신 걸 환영해요" : "CodeClue 시작하기";
-  authSub.textContent = mode === "login" ? "계정으로 로그인하고 대화를 이어가세요." : "아이디와 비밀번호만 있으면 바로 시작할 수 있어요.";
-  authHints.forEach((hint) => { hint.hidden = mode !== "signup"; });
-  authPassword.autocomplete = mode === "login" ? "current-password" : "new-password";
+  authTitle.textContent =
+    mode === "login" ? "다시 오신 걸 환영해요" : "CodeClue 시작하기";
+  authSub.textContent =
+    mode === "login"
+      ? "계정으로 로그인하고 대화를 이어가세요."
+      : "아이디와 비밀번호만 있으면 바로 시작할 수 있어요.";
+  authHints.forEach((hint) => {
+    hint.hidden = mode !== "signup";
+  });
+  authPassword.autocomplete =
+    mode === "login" ? "current-password" : "new-password";
   showAuthError("");
 }
 
 function showAuthError(message) {
   authError.textContent = message;
   authError.hidden = !message;
-  if (!message) [authUsername, authPassword].forEach((field) => field.removeAttribute("aria-invalid"));
+  if (!message)
+    [authUsername, authPassword].forEach((field) =>
+      field.removeAttribute("aria-invalid"),
+    );
 }
 
 // 빈 칸이면 브라우저 기본 풍선 대신 화면 안에 알려 준다 (형식 검사는 서버가 한다)
 function checkAuthFields() {
-  const empty = [[authUsername, "아이디"], [authPassword, "비밀번호"]].filter(([field]) => !field.value.trim());
+  const empty = [
+    [authUsername, "아이디"],
+    [authPassword, "비밀번호"],
+  ].filter(([field]) => !field.value.trim());
   if (!empty.length) return true;
   empty.forEach(([field]) => field.setAttribute("aria-invalid", "true"));
-  showAuthError(`${empty.map(([, name]) => name).join("와 ")}를 입력해 주세요.`);
+  showAuthError(
+    `${empty.map(([, name]) => name).join("와 ")}를 입력해 주세요.`,
+  );
   empty[0][0].focus();
   return false;
 }
 
-[authUsername, authPassword].forEach((field) => field.addEventListener("input", () => field.removeAttribute("aria-invalid")));
+[authUsername, authPassword].forEach((field) =>
+  field.addEventListener("input", () => field.removeAttribute("aria-invalid")),
+);
 
 function showAuth(message = "") {
   closeNav();
@@ -134,7 +160,9 @@ function showApp(user) {
   authEl.hidden = true;
   appEl.hidden = false;
   userNameEl.textContent = user.username;
-  document.getElementById("user-avatar").textContent = (user.username || "?").charAt(0);
+  document.getElementById("user-avatar").textContent = (
+    user.username || "?"
+  ).charAt(0);
   authPassword.value = "";
   newChat();
   loadConversations();
@@ -150,7 +178,10 @@ authForm.addEventListener("submit", async (event) => {
   if (!checkAuthFields()) return;
   authSubmit.disabled = true;
   try {
-    const { ok, data } = await api(`/api/auth/${authMode}/`, { method: "POST", body: { username: authUsername.value, password: authPassword.value } });
+    const { ok, data } = await api(`/api/auth/${authMode}/`, {
+      method: "POST",
+      body: { username: authUsername.value, password: authPassword.value },
+    });
     if (ok) showApp(data.user);
     else showAuthError(data.error || "요청을 처리하지 못했습니다.");
   } catch (error) {
@@ -162,7 +193,11 @@ authForm.addEventListener("submit", async (event) => {
 
 document.getElementById("logout").addEventListener("click", async () => {
   if (busy) return;
-  try { await api("/api/auth/logout/", { method: "POST" }); } catch (error) { /* 서버에 닿지 않아도 화면은 로그아웃 상태로 */ }
+  try {
+    await api("/api/auth/logout/", { method: "POST" });
+  } catch (error) {
+    /* 서버에 닿지 않아도 화면은 로그아웃 상태로 */
+  }
   authPassword.value = "";
   showAuth();
 });
@@ -187,7 +222,11 @@ function showTyping(bubble, label) {
   const dots = document.createElement("span");
   dots.className = "dots";
   dots.setAttribute("aria-hidden", "true");
-  dots.append(document.createElement("span"), document.createElement("span"), document.createElement("span"));
+  dots.append(
+    document.createElement("span"),
+    document.createElement("span"),
+    document.createElement("span"),
+  );
   const text = document.createElement("span");
   text.className = "typing-label";
   text.textContent = label;
@@ -214,11 +253,15 @@ messagesEl.addEventListener("click", async (event) => {
   } catch (error) {
     button.textContent = "복사 실패";
   }
-  setTimeout(() => { button.textContent = "복사"; }, 1500);
+  setTimeout(() => {
+    button.textContent = "복사";
+  }, 1500);
 });
 
 function showSources(sources) {
-  const usable = (sources || []).filter((source) => source && isSafeUrl(source.url));
+  const usable = (sources || []).filter(
+    (source) => source && isSafeUrl(source.url),
+  );
   if (!usable.length) return;
   const box = document.createElement("div");
   box.className = "sources";
@@ -248,7 +291,10 @@ const narrowScreen = window.matchMedia("(max-width: 760px)");
 function setNavOpen(open) {
   appEl.classList.toggle("nav-open", open);
   menuButton.setAttribute("aria-expanded", String(open));
-  menuButton.setAttribute("aria-label", open ? "대화 목록 닫기" : "대화 목록 열기");
+  menuButton.setAttribute(
+    "aria-label",
+    open ? "대화 목록 닫기" : "대화 목록 열기",
+  );
   sidebarEl.inert = narrowScreen.matches && !open; // 닫힌 서랍 안의 버튼에 Tab으로 들어가지 않게
   if (open) document.getElementById("new-chat").focus();
 }
@@ -257,14 +303,118 @@ function closeNav() {
   if (appEl.classList.contains("nav-open")) setNavOpen(false);
 }
 
-
-menuButton.addEventListener("click", () => setNavOpen(!appEl.classList.contains("nav-open")));
+menuButton.addEventListener("click", () =>
+  setNavOpen(!appEl.classList.contains("nav-open")),
+);
 document.getElementById("backdrop").addEventListener("click", closeNav);
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && appEl.classList.contains("nav-open")) { closeNav(); menuButton.focus(); }
+  if (event.key === "Escape" && appEl.classList.contains("nav-open")) {
+    closeNav();
+    menuButton.focus();
+  }
 });
 narrowScreen.addEventListener("change", () => setNavOpen(false)); // 화면 폭이 바뀌면 서랍을 닫힌 상태로 맞춘다
 setNavOpen(false);
+
+// ---------------------------------------------------------------- 알림(토스트)과 확인 창
+// 브라우저 기본 alert/confirm 대신 화면 테마에 맞춘 것을 쓴다. 글은 모두 textContent로만 넣는다.
+function iconSvg(name) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("aria-hidden", "true");
+  const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+  use.setAttribute("href", `#i-${name}`);
+  svg.append(use);
+  return svg;
+}
+
+// type: "success" 또는 "error". 몇 초 뒤 저절로 사라지고, 누르면 바로 닫힌다.
+function showToast(message, type = "success") {
+  let stack = document.getElementById("toasts");
+  if (!stack) {
+    stack = document.createElement("div");
+    stack.id = "toasts";
+    stack.className = "toasts";
+    stack.setAttribute("role", "status");
+    stack.setAttribute("aria-live", "polite");
+    document.body.append(stack);
+  }
+  const toast = document.createElement("div");
+  toast.className = `toast toast-${type}`;
+  const icon = document.createElement("span");
+  icon.className = "toast-icon";
+  icon.append(iconSvg(type === "error" ? "alert" : "check"));
+  const text = document.createElement("span");
+  text.textContent = message;
+  toast.append(icon, text);
+  stack.append(toast);
+  const dismiss = () => {
+    if (toast.classList.contains("leaving")) return;
+    toast.classList.add("leaving");
+    setTimeout(() => toast.remove(), 200);
+  };
+  toast.addEventListener("click", dismiss);
+  setTimeout(dismiss, type === "error" ? 4500 : 2800);
+}
+
+// 확인 창. 확인을 누르면 true, 취소·Esc·바깥 누르기면 false로 끝나는 Promise를 돌려준다.
+function confirmDialog({
+  title,
+  message,
+  confirmText = "확인",
+  danger = false,
+}) {
+  return new Promise((resolve) => {
+    const dialog = document.createElement("dialog");
+    dialog.className = "rename-dialog confirm-dialog";
+    dialog.setAttribute("aria-labelledby", "confirm-heading");
+    dialog.setAttribute("aria-describedby", "confirm-message");
+    const badge = document.createElement("span");
+    badge.className = `confirm-badge${danger ? " danger" : ""}`;
+    badge.append(iconSvg(danger ? "trash" : "alert"));
+    const heading = document.createElement("h2");
+    heading.id = "confirm-heading";
+    heading.textContent = title;
+    const body = document.createElement("p");
+    body.id = "confirm-message";
+    body.className = "confirm-message";
+    body.textContent = message;
+    const controls = document.createElement("div");
+    controls.className = "rename-controls";
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.textContent = "취소";
+    const ok = document.createElement("button");
+    ok.type = "button";
+    ok.className = danger ? "btn-danger" : "btn-confirm";
+    ok.textContent = confirmText;
+    controls.append(cancel, ok);
+    dialog.append(badge, heading, body, controls);
+
+    let answer = false;
+    cancel.addEventListener("click", () => dialog.close());
+    ok.addEventListener("click", () => {
+      answer = true;
+      dialog.close();
+    });
+    dialog.addEventListener("click", (event) => {
+      // 창 바깥(어두운 배경)을 누르면 취소
+      const box = dialog.getBoundingClientRect();
+      const inside =
+        event.clientX >= box.left &&
+        event.clientX <= box.right &&
+        event.clientY >= box.top &&
+        event.clientY <= box.bottom;
+      if (event.target === dialog && !inside) dialog.close();
+    });
+    dialog.addEventListener("close", () => {
+      dialog.remove();
+      resolve(answer);
+    });
+    document.body.append(dialog);
+    dialog.showModal();
+    cancel.focus(); // 되돌릴 수 없는 작업이라 기본 선택은 취소
+  });
+}
 
 // ---------------------------------------------------------------- 대화 목록
 function renderConversationList(items) {
@@ -278,7 +428,8 @@ function renderConversationList(items) {
   }
   items.forEach((item) => {
     const row = document.createElement("div");
-    row.className = "conversation" + (item.id === conversationId ? " current" : "");
+    row.className =
+      "conversation" + (item.id === conversationId ? " current" : "");
     const open = document.createElement("button");
     open.type = "button";
     open.className = "open";
@@ -302,7 +453,10 @@ function renderConversationList(items) {
     actions.append(toggle, rename);
     actions.addEventListener("click", (event) => event.stopPropagation());
     actions.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") { actions.open = false; toggle.focus(); }
+      if (event.key === "Escape") {
+        actions.open = false;
+        toggle.focus();
+      }
     });
     rename.addEventListener("click", () => {
       actions.open = false;
@@ -345,7 +499,9 @@ function editConversationTitle(item, titleButton, menuButton) {
   save.type = "submit";
   save.textContent = "저장";
   let saving = false;
-  const close = () => { if (!saving) dialog.close(); };
+  const close = () => {
+    if (!saving) dialog.close();
+  };
   cancel.addEventListener("click", close);
   dialog.addEventListener("cancel", (event) => {
     if (saving) event.preventDefault();
@@ -359,7 +515,9 @@ function editConversationTitle(item, titleButton, menuButton) {
     if (saving) return;
     const title = field.value.trim();
     if (!title || Array.from(title).length > 100) {
-      notice.textContent = title ? "제목은 100자 이하로 입력해 주세요." : "제목을 입력해 주세요.";
+      notice.textContent = title
+        ? "제목은 100자 이하로 입력해 주세요."
+        : "제목을 입력해 주세요.";
       field.setAttribute("aria-invalid", "true");
       field.focus();
       return;
@@ -369,14 +527,21 @@ function editConversationTitle(item, titleButton, menuButton) {
     notice.textContent = "";
     field.removeAttribute("aria-invalid");
     try {
-      const { ok, data } = await api(`/api/conversations/${item.id}/`, { method: "PATCH", body: { title } });
-      if (!ok) throw new Error(data.error || "제목을 저장하지 못했습니다. 다시 시도해 주세요.");
+      const { ok, data } = await api(`/api/conversations/${item.id}/`, {
+        method: "PATCH",
+        body: { title },
+      });
+      if (!ok)
+        throw new Error(
+          data.error || "제목을 저장하지 못했습니다. 다시 시도해 주세요.",
+        );
       item.title = data.title;
       // Text-only rendering; keep row position and the open conversation unchanged.
       titleButton.textContent = data.title;
       titleButton.title = data.title;
       menuButton.setAttribute("aria-label", `${data.title} 메뉴`);
       dialog.close();
+      showToast("대화 이름을 변경했어요.");
     } catch (error) {
       notice.textContent = `${error.message || "저장에 실패했습니다."} 제목을 확인하고 다시 저장해 주세요.`;
     } finally {
@@ -399,7 +564,9 @@ async function loadConversations() {
     const { ok, status, data } = await api("/api/conversations/");
     if (status === 401) return showAuth("로그인이 필요합니다.");
     if (ok) renderConversationList(data.conversations || []);
-  } catch (error) { /* 목록을 못 불러와도 질문은 계속할 수 있다 */ }
+  } catch (error) {
+    /* 목록을 못 불러와도 질문은 계속할 수 있다 */
+  }
 }
 
 function newChat() {
@@ -418,32 +585,54 @@ async function openConversation(id) {
   try {
     const { ok, status, data } = await api(`/api/conversations/${id}/`);
     if (status === 401) return showAuth("로그인이 필요합니다.");
-    if (!ok) { statusEl.textContent = data.error || "대화를 불러오지 못했습니다."; return; }
+    if (!ok) {
+      statusEl.textContent = data.error || "대화를 불러오지 못했습니다.";
+      return;
+    }
     conversationId = data.id;
     messagesEl.replaceChildren();
     data.messages.forEach((message) => {
-      addBubble(message.role === "user" ? "user" : "assistant", message.content);
+      addBubble(
+        message.role === "user" ? "user" : "assistant",
+        message.content,
+      );
       if (message.role !== "user") showSources(message.sources);
     });
     statusEl.textContent = "";
     scrollToEnd();
     loadConversations();
   } catch (error) {
-    statusEl.textContent = "대화를 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.";
+    statusEl.textContent =
+      "대화를 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.";
   }
 }
 
 async function removeConversation(item) {
   if (busy) return;
-  if (!window.confirm(`"${item.title || "새 대화"}" 대화를 삭제할까요? 되돌릴 수 없습니다.`)) return;
+  const confirmed = await confirmDialog({
+    title: "대화를 삭제할까요?",
+    message: `"${item.title || "새 대화"}" 대화와 그 안의 질문·답변이 모두 지워집니다. 삭제한 대화는 되돌릴 수 없어요.`,
+    confirmText: "삭제",
+    danger: true,
+  });
+  if (!confirmed || busy) return;
   try {
-    const { ok, status, data } = await api(`/api/conversations/${item.id}/`, { method: "DELETE" });
+    const { ok, status, data } = await api(`/api/conversations/${item.id}/`, {
+      method: "DELETE",
+    });
     if (status === 401) return showAuth("로그인이 필요합니다.");
-    if (!ok) { statusEl.textContent = data.error || "대화를 삭제하지 못했습니다."; return; }
+    if (!ok) {
+      showToast(data.error || "대화를 삭제하지 못했습니다.", "error");
+      return;
+    }
     if (item.id === conversationId) newChat();
     else loadConversations();
+    showToast("대화를 삭제했어요.");
   } catch (error) {
-    statusEl.textContent = "대화를 삭제하지 못했습니다. 인터넷 연결을 확인해 주세요.";
+    showToast(
+      "대화를 삭제하지 못했습니다. 인터넷 연결을 확인해 주세요.",
+      "error",
+    );
   }
 }
 
@@ -504,7 +693,11 @@ async function ask(question) {
   }
   if (!response.ok || !response.body) {
     let message = "서버에서 답을 받지 못했습니다.";
-    try { message = (await response.json()).error || message; } catch (error) { /* 본문이 JSON이 아니면 기본 문장 */ }
+    try {
+      message = (await response.json()).error || message;
+    } catch (error) {
+      /* 본문이 JSON이 아니면 기본 문장 */
+    }
     showError(message);
     return;
   }
@@ -525,7 +718,10 @@ async function ask(question) {
         setTypingLabel(answerBubble, data);
       } else if (name === "token") {
         answer += data;
-        if (!renderQueued) { renderQueued = true; requestAnimationFrame(redraw); }
+        if (!renderQueued) {
+          renderQueued = true;
+          requestAnimationFrame(redraw);
+        }
       } else if (name === "sources") {
         showSources(data);
       } else if (name === "done") {
@@ -558,8 +754,11 @@ form.addEventListener("submit", async (event) => {
     await ask(question);
   } catch (error) {
     // 기다림 표시가 남아 있는 말풍선이 있으면 그 자리에 오류를 보여 준다
-    const pending = messagesEl.querySelector('.bubble[aria-busy="true"]') || addBubble("assistant", "");
-    pending.textContent = "연결에 문제가 생겼습니다. 인터넷 연결을 확인하고 다시 시도해 주세요.";
+    const pending =
+      messagesEl.querySelector('.bubble[aria-busy="true"]') ||
+      addBubble("assistant", "");
+    pending.textContent =
+      "연결에 문제가 생겼습니다. 인터넷 연결을 확인하고 다시 시도해 주세요.";
     pending.classList.add("error");
     pending.removeAttribute("aria-busy");
   } finally {
