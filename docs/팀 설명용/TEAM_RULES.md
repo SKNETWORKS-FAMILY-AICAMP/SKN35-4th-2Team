@@ -38,6 +38,18 @@ uv run python back/manage.py runserver
 
 ---
 
+## 2-1. 안 될 때 (증상별)
+
+| 증상 | 원인 | 해결 |
+|---|---|---|
+| 로그인·가입에서 "계정 정보를 확인하지 못했습니다" | `back/.env`가 없거나 DB 항목이 비어 있음 | 종원에게 `.env`를 받아 `back/.env`에 두기 (`DB_DATABASE=skn35_4th`) |
+| 로그인·가입에서 "서버 오류(500)" | 예전 코드를 쓰고 있음 | `git pull` → `uv sync --system-certs` 후 서버를 다시 켜기 |
+| 질문하면 "답변을 받지 못했습니다. 모델 설정과 인터넷 연결을 확인해 주세요." | 서버를 켠 터미널의 오류를 봐야 원인이 나옴. 학원 네트워크에서는 `CERTIFICATE_VERIFY_FAILED`(인증서)인 경우가 많음 | 최신 코드로 `uv sync --system-certs` 후 다시 시도. 그래도 안 되면 터미널의 오류 문장을 팀에 공유 |
+| `uv sync`에서 `UnknownIssuer` | 학원 네트워크의 인증서 | `uv sync --system-certs` |
+| 화면이 옛날 모양 | 브라우저 캐시 | `Ctrl + F5` |
+
+---
+
 ## 3. 작업 방법 (git)
 
 1. **내 브랜치에서만 작업**합니다. (`main`, `Dev`에 직접 올리지 않기)

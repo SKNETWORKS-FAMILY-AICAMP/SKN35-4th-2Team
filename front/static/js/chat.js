@@ -37,6 +37,7 @@ async function api(url, { method = "GET", body } = {}) {
   const response = await fetch(url, options);
   let data = {};
   try { data = await response.json(); } catch (error) { /* 본문이 없거나 JSON이 아니면 빈 값 */ }
+  if (!response.ok && !data.error) data.error = `서버 오류(${response.status})가 발생했습니다. 잠시 후 다시 시도하고, 계속되면 팀에 알려 주세요.`;
   return { ok: response.ok, status: response.status, data };
 }
 

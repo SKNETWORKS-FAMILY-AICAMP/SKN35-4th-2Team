@@ -6,6 +6,7 @@
 import json
 from unittest import mock
 
+from django.conf import settings
 from django.test import Client, SimpleTestCase, TestCase
 from django.urls import reverse
 
@@ -20,9 +21,11 @@ def post(client, payload, **extra):
 
 
 def log_in(client, user_id=USER_ID):
+    """테스트용으로 로그인한 상태를 만든다. 서명된 쿠키 방식이라 저장한 쿠키 값을 브라우저(client)에 직접 심어 준다."""
     session = client.session
     session["user_id"] = user_id
     session.save()
+    client.cookies[settings.SESSION_COOKIE_NAME] = session.session_key
 
 
 def read_events(response):

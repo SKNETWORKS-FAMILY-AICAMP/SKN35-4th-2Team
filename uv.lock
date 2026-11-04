@@ -3516,6 +3516,7 @@ dependencies = [
     { name = "sqlalchemy" },
     { name = "tiktoken" },
     { name = "tokenizers" },
+    { name = "truststore" },
     { name = "whitenoise" },
 ]
 
@@ -3553,6 +3554,7 @@ requires-dist = [
     { name = "sqlalchemy", specifier = ">=2.0" },
     { name = "tiktoken", specifier = ">=0.14.0" },
     { name = "tokenizers", specifier = ">=0.20.0" },
+    { name = "truststore", specifier = ">=0.10" },
     { name = "whitenoise", specifier = ">=6.7" },
 ]
 

@@ -11,6 +11,15 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+# 학원/회사 네트워크는 보안 장비가 인증서를 바꿔 끼워서, 파이썬 기본 인증서 목록(certifi)만으로는 Pinecone 같은 외부 서비스에 접속이 실패한다
+# (CERTIFICATE_VERIFY_FAILED). 운영체제의 인증서 저장소를 쓰게 해서 해결한다. 인증서 검증을 끄는 것이 아니다.
+try:
+    import truststore
+
+    truststore.inject_into_ssl()
+except ImportError:  # 설치되어 있지 않으면 기본 방식으로 동작한다
+    pass
+
 BASE_DIR = Path(__file__).resolve().parent.parent  # back/
 REPO_ROOT = BASE_DIR.parent  # 저장소 맨 위 (back/, front/, docs/가 있는 곳)
 FRONT_DIR = REPO_ROOT / "front"
@@ -89,6 +98,10 @@ DATABASES = {
 }
 
 # ---------------------------------------------------------------- 로그인 세션 (계정 자체는 3차 DB 계층이 관리하고, 장고는 user_id만 세션에 담는다)
+# 로그인 상태는 DB 테이블이 아니라 "서명된 쿠키"에 담는다 (비밀키로 서명해서 위조할 수 없다).
+# 그래서 manage.py migrate 없이도 로그인이 되고, 서버에 세션 DB 파일이 필요 없다.
+# 한계: 로그아웃은 브라우저의 쿠키를 지우는 방식이라, 이미 복사된 쿠키를 서버에서 미리 무효화할 수는 없다(24시간 안에 만료).
+SESSION_ENGINE = "django.contrib.sessions.backends.signed_cookies"
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True  # 브라우저를 닫으면 로그인 종료
 SESSION_COOKIE_AGE = 60 * 60 * 24  # 열어 둔 채로도 최대 24시간
 SESSION_COOKIE_SAMESITE = "Lax"
