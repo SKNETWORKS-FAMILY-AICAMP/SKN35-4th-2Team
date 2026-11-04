@@ -18,6 +18,10 @@ import re
 from difflib import SequenceMatcher
 
 from django.http import JsonResponse
+from django.shortcuts import redirect
+from django.views.decorators.cache import never_cache
+
+from . import login_security
 from django.views.decorators.http import require_GET, require_POST
 
 from src.db import UsernameTakenError, authenticate, create_user, db_session
@@ -34,7 +38,7 @@ SESSION_USER_KEY = "user_id"
 SESSION_NAME_KEY = "username"
 SESSION_ADMIN_KEY = "is_admin"
 
-LOGIN_FAILED = "아이디 또는 비밀번호가 올바르지 않습니다."
+LOGIN_FAILED = login_security.LOGIN_FAILED
 DB_PROBLEM = "계정 정보를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요."
 
 
@@ -124,27 +128,45 @@ def signup(request):
     return JsonResponse({"user": public_user(name, is_admin)})
 
 
+@never_cache
 @require_POST
 def login(request):
     credentials, problem = read_credentials(request)
     if problem:
         return error(problem, 400)
     username, password = credentials
+    username = username.strip().lower()
+    if len(username) > 255:
+        return error("아이디가 너무 깁니다.", 400)
+    body = json.loads(request.body.decode("utf-8"))  # read_credentials already validated JSON.
     try:
+        axes_credentials = login_security.prepare(request, username)
+        blocked = login_security.guard(request, axes_credentials, body)
+        if blocked is not None:
+            return blocked
         with db_session() as session:
             user = authenticate(session, username, password)
             found = (user.id, user.username, user.is_admin) if user else None
+        if found is None:
+            return login_security.failed(request, axes_credentials)
+        login_security.succeeded(request, found[1])
     except Exception:
         logger.exception("로그인 중 DB 오류")
         return error(DB_PROBLEM, 503)
-    if found is None:
-        return error(LOGIN_FAILED, 401)  # 없는 아이디, 틀린 비밀번호, 비활성 계정을 구분하지 않는다
     log_in(request, *found)
     return JsonResponse({"user": public_user(found[1], found[2])})
 
 
 @require_POST
 def logout(request):
+    if current_user_id(request) is not None:
+        try:
+            login_security.AxesProxyHandler.user_logged_out(
+                sender=__name__, request=request,
+                user=login_security.SecurityIdentity(request.session.get(SESSION_NAME_KEY, "")),
+            )
+        except Exception:
+            logger.exception("로그아웃 보안 이력 기록 오류")
     request.session.flush()
     return JsonResponse({})
 
@@ -154,3 +176,32 @@ def me(request):
     if current_user_id(request) is None:
         return JsonResponse({"user": None})
     return JsonResponse({"user": public_user(request.session.get(SESSION_NAME_KEY, ""), request.session.get(SESSION_ADMIN_KEY, False))})
+
+
+@never_cache
+@require_POST
+def login_captcha(request):
+    """Refresh a challenge without authenticating or increasing failure counts."""
+    try:
+        body = json.loads(request.body.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        return error("요청 형식이 올바르지 않습니다.", 400)
+    username = body.get("username") if isinstance(body, dict) else None
+    if not isinstance(username, str) or not username.strip() or len(username) > 255:
+        return error("아이디를 입력해 주세요.", 400)
+    try:
+        credentials = login_security.prepare(request, username)
+        failures = login_security.AxesProxyHandler.get_failures(request, credentials)
+        request.session["fail_count"] = failures
+        return JsonResponse({**login_security.failure_state(failures),
+                             "captcha": login_security.new_captcha(request) if failures >= 3 else None})
+    except Exception:
+        logger.exception("로그인 보안문자 준비 오류")
+        return error("보안문자를 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.", 503)
+
+
+@never_cache
+@require_GET
+def lockout(request):
+    # Existing bookmarks must not continue showing a removed lockout policy.
+    return redirect("chat:index")

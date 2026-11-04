@@ -1992,3 +1992,13 @@ kbd {
 .bubble-images { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .bubble-images img { display: block; max-width: min(240px, 100%); max-height: 200px; object-fit: contain; border-radius: 10px; }
 .composer.dragging { outline: 2px dashed var(--brand); outline-offset: 2px; }
+
+/* Conditional login CAPTCHA and lockout, using the existing auth design. */
+.login-captcha { margin-top: 14px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2); }
+.captcha-image-row { display: flex; align-items: center; gap: 10px; margin: 8px 0; flex-wrap: wrap; }
+.captcha-image-row img { max-width: 100%; object-fit: contain; background: #fff; border-radius: 8px; }
+.captcha-image-row button { padding: 6px 10px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface); color: var(--text-2); }
+.login-captcha label { display: block; margin: 8px 0 6px; font-size: 13px; color: var(--text-2); }
+.login-captcha input { width: 100%; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); color: var(--text); font: inherit; }
+.captcha-error { margin: 6px 0 0; color: var(--error); font-size: 13px; }
+.login-captcha :focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
