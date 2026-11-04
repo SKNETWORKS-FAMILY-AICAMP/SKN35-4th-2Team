@@ -8,7 +8,10 @@ DELETE /api/conversations/<id>/   → {}
 로그인하지 않았으면 401, 없거나 남의 대화면 404(존재 여부를 알려 주지 않는다), DB 문제면 503. 시각은 UTC ISO 문자열(끝에 Z).
 """
 
+import json
 import logging
+
+from src.db.repository import rename_conversation
 
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
@@ -47,11 +50,29 @@ def conversation_list(request):
     return JsonResponse({"conversations": items})
 
 
-@require_http_methods(["GET", "DELETE"])
+@require_http_methods(["GET", "DELETE", "PATCH"])
 def conversation_detail(request, conversation_id):
     user_id = current_user_id(request)
     if user_id is None:
         return error(LOGIN_REQUIRED, 401)
+    if request.method == "PATCH":
+        try:
+            body = json.loads(request.body.decode("utf-8"))
+        except (ValueError, UnicodeDecodeError):
+            return error("요청 형식이 올바르지 않습니다.", 400)
+        title = body.get("title") if isinstance(body, dict) else None
+        if not isinstance(title, str) or not 1 <= len(title.strip()) <= 100:
+            return error("제목은 공백을 제외하고 1~100자로 입력해 주세요.", 400)
+        try:
+            with db_session() as session:
+                conv = rename_conversation(session, conversation_id, user_id, title)
+                payload = {"id": conv.id, "title": conv.title}
+            return JsonResponse(payload)
+        except PermissionError:
+            return error(NOT_FOUND, 404)
+        except Exception:
+            logger.exception("대화 제목 변경 DB 오류")
+            return error("제목을 저장하지 못했습니다. 다시 시도해 주세요.", 503)
     try:
         with db_session() as session:
             if request.method == "DELETE":

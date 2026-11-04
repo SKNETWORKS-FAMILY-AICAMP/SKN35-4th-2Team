@@ -188,6 +188,21 @@ def list_conversations(session: Session, user_id: int, limit: int = 50) -> list[
     return list(session.scalars(stmt))
 
 
+def rename_conversation(session: Session, conversation_id: int, user_id: int, title: str) -> Conversation:
+    if not isinstance(title, str) or not 1 <= len(title.strip()) <= 100:
+        raise ValueError("제목은 공백을 제외하고 1~100자로 입력해 주세요.")
+    conv = get_conversation(session, conversation_id, user_id)
+    if conv is None:
+        raise PermissionError("대화가 없거나 접근할 수 없습니다.")
+    # Explicit SQL keeps onupdate from changing list order, including during concurrent messages.
+    from sqlalchemy import update
+    session.execute(update(Conversation).where(
+        Conversation.id == conversation_id, Conversation.user_id == user_id
+    ).values(title=title.strip(), title_is_custom=True, updated_at=Conversation.updated_at))
+    session.refresh(conv)
+    return conv
+
+
 def delete_conversation(session: Session, conversation_id: int, user_id: int) -> bool:
     conv = get_conversation(session, conversation_id, user_id)
     if conv is None:
@@ -245,7 +260,7 @@ def add_message(
     )
     session.add(msg)
     # 첫 질문이면 제목으로 쓴다 (앞 40자)
-    if role == "user" and conv.title == "새 대화":
+    if role == "user" and conv.title == "새 대화" and not conv.title_is_custom:
         conv.title = " ".join(content.split())[:40] or "새 대화"
     conv.updated_at = utcnow()
     session.flush()

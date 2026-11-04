@@ -87,6 +87,7 @@ class Conversation(Base):
         ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
     title: Mapped[str] = mapped_column(String(200), default="새 대화")
+    title_is_custom: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     # 오래된 대화를 압축한 요약. summary_upto_message_id까지의 메시지가 요약에 반영돼 있다.
     # (messages와 서로 참조하는 순환을 피하려고 이 컬럼에는 외래키를 걸지 않는다.)
     summary: Mapped[str | None] = mapped_column(LongText, nullable=True)
