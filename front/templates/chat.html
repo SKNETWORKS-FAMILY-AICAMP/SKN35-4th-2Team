@@ -56,6 +56,10 @@
         <path d="M10 16l-4-4 4-4M6 12h10" />
       </g>
     </symbol>
+    <symbol id="i-attach" viewBox="0 0 24 24">
+      <path d="M21.4 11.05 12.2 20.25a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"
+        fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" />
+    </symbol>
     <symbol id="i-send" viewBox="0 0 24 24">
       <path d="M12 19V5M6 11l6-6 6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
         stroke-linejoin="round" />
@@ -261,8 +265,17 @@
         <div id="status" class="status" role="alert"></div>
         <div id="previews" class="previews" aria-label="첨부 이미지 미리보기" hidden></div>
         <form id="chat-form" class="composer">
-          <input id="file-input" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden>
-          <button id="attach" type="button" class="icon-button" aria-label="이미지 첨부" title="이미지 첨부"><svg aria-hidden="true"><use href="#i-plus" /></svg></button>
+          <input id="file-input" type="file"
+            accept="image/png,image/jpeg,image/webp" multiple hidden>
+
+          <button id="attach" type="button"
+            class="icon-button attach"
+            aria-label="이미지 첨부"
+            title="이미지 첨부 (최대 3장, 붙여넣기와 끌어놓기도 가능)">
+            <svg aria-hidden="true">
+              <use href="#i-attach" />
+            </svg>
+          </button>
           <textarea id="question" rows="1" maxlength="4000" placeholder="오류 메시지나 궁금한 점을 입력하세요"
             aria-label="질문 입력"></textarea>
           <button id="send" type="submit" aria-label="보내기" title="보내기 (Enter)"><svg>
