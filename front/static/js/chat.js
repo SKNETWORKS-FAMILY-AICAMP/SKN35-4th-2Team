@@ -181,9 +181,107 @@ function renderConversationList(items) {
     remove.textContent = "✕";
     remove.setAttribute("aria-label", "이 대화 삭제");
     remove.addEventListener("click", () => removeConversation(item));
-    row.append(open, remove);
+    const actions = document.createElement("details");
+    actions.className = "conversation-actions";
+    const toggle = document.createElement("summary");
+    toggle.textContent = "⋯";
+    toggle.setAttribute("aria-label", `${item.title || "새 대화"} 메뉴`);
+    const rename = document.createElement("button");
+    rename.type = "button";
+    rename.textContent = "이름 변경";
+    actions.append(toggle, rename);
+    actions.addEventListener("click", (event) => event.stopPropagation());
+    actions.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") { actions.open = false; toggle.focus(); }
+    });
+    rename.addEventListener("click", () => {
+      actions.open = false;
+      editConversationTitle(item, open, toggle);
+    });
+    row.append(open, actions, remove);
     listEl.append(row);
   });
+}
+
+// Native modal supplies focus trapping, keyboard access and Escape cancellation.
+function editConversationTitle(item, titleButton, menuButton) {
+  if (document.querySelector(".rename-dialog")) return;
+  const dialog = document.createElement("dialog");
+  dialog.className = "rename-dialog";
+  dialog.setAttribute("aria-labelledby", "rename-heading");
+  const editor = document.createElement("form");
+  editor.noValidate = true;
+  const heading = document.createElement("h2");
+  heading.id = "rename-heading";
+  heading.textContent = "대화 이름 변경";
+  const label = document.createElement("label");
+  label.htmlFor = "rename-title";
+  label.textContent = "제목 (1~100자)";
+  const field = document.createElement("input");
+  field.id = "rename-title";
+  field.name = "title";
+  field.value = item.title || "새 대화";
+  field.setAttribute("aria-describedby", "rename-error");
+  const notice = document.createElement("p");
+  notice.id = "rename-error";
+  notice.className = "rename-error";
+  notice.setAttribute("role", "alert");
+  const controls = document.createElement("div");
+  controls.className = "rename-controls";
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.textContent = "취소";
+  const save = document.createElement("button");
+  save.type = "submit";
+  save.textContent = "저장";
+  let saving = false;
+  const close = () => { if (!saving) dialog.close(); };
+  cancel.addEventListener("click", close);
+  dialog.addEventListener("cancel", (event) => {
+    if (saving) event.preventDefault();
+  });
+  dialog.addEventListener("close", () => {
+    dialog.remove();
+    if (menuButton.isConnected) menuButton.focus();
+  });
+  editor.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (saving) return;
+    const title = field.value.trim();
+    if (!title || Array.from(title).length > 100) {
+      notice.textContent = title ? "제목은 100자 이하로 입력해 주세요." : "제목을 입력해 주세요.";
+      field.setAttribute("aria-invalid", "true");
+      field.focus();
+      return;
+    }
+    saving = true;
+    save.disabled = cancel.disabled = field.disabled = true;
+    notice.textContent = "";
+    field.removeAttribute("aria-invalid");
+    try {
+      const { ok, data } = await api(`/api/conversations/${item.id}/`, { method: "PATCH", body: { title } });
+      if (!ok) throw new Error(data.error || "제목을 저장하지 못했습니다. 다시 시도해 주세요.");
+      item.title = data.title;
+      // Text-only rendering; keep row position and the open conversation unchanged.
+      titleButton.textContent = data.title;
+      titleButton.title = data.title;
+      menuButton.setAttribute("aria-label", `${data.title} 메뉴`);
+      dialog.close();
+    } catch (error) {
+      notice.textContent = `${error.message || "저장에 실패했습니다."} 제목을 확인하고 다시 저장해 주세요.`;
+    } finally {
+      saving = false;
+      save.disabled = cancel.disabled = field.disabled = false;
+      if (dialog.open) field.focus();
+    }
+  });
+  controls.append(cancel, save);
+  editor.append(heading, label, field, notice, controls);
+  dialog.append(editor);
+  document.body.append(dialog);
+  dialog.showModal();
+  field.focus();
+  field.select();
 }
 
 async function loadConversations() {
