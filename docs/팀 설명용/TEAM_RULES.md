@@ -87,7 +87,7 @@ uv run python back/manage.py test chat
 - 질문 보내기: `POST /api/chat/` (로그인 필요) — `{"question": "...", "conversation_id": 12}` (`conversation_id`는 이어서 질문할 때만)
 - 로그인과 대화 목록: `/api/auth/*`, `/api/conversations/*`, 저장된 이미지 `/api/attachments/*` (자세한 표는 README 8장)
 - 대화 제목 검색: `GET /api/conversations/?q=검색어` → 제목에 검색어가 있는 대화만, 목록과 같은 형식입니다(대화 내용은 검색하지 않습니다). 검색어가 비면 전체 목록이고, 100자를 넘으면 `400`입니다.
-- 제목 변경: `PATCH /api/conversations/<번호>/` 에 `{"title": "새 제목"}` → `{"id", "title", "updated_at"}`. 제목이 비었거나 100자를 넘으면 `400`과 `{"error": "사용자에게 보여 줄 문장"}`이 오니 그 문장을 그대로 보여 주세요. 변경해도 목록 순서는 바뀌지 않습니다.
+- 제목 변경: `PATCH /api/conversations/<번호>/` 에 `{"title": "새 제목"}` → `{"id", "title"}`. 공백을 뺀 길이가 1~100자가 아니면 `400`과 `{"error": "사용자에게 보여 줄 문장"}`이 오니 그 문장을 그대로 보여 주세요. 변경해도 목록 순서는 바뀌지 않고, 직접 바꾼 제목은 이후 질문으로 덮어써지지 않습니다. (제목 변경은 이미 화면까지 구현되어 있습니다.)
 - 요청은 `fetch(url, {method: "PATCH", headers: {"Content-Type": "application/json", "X-CSRFToken": csrfToken()}, body: JSON.stringify({title})})` 처럼 보냅니다. 검색어는 사용자가 입력한 값을 `encodeURIComponent`로 감싸 주소에 붙입니다.
 - 이미지를 보낼 때는 `FormData`로 `images`를 붙입니다. `Content-Type` 헤더는 직접 쓰지 않습니다(브라우저가 붙입니다).
 - 화면의 답변 그리기는 `front/static/js/markdown.js`가 맡습니다. 답변 글은 항상 `textContent`로만 넣고 `innerHTML`은 쓰지 않습니다 (스크립트 실행 방지)

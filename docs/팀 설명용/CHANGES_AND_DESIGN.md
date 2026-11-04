@@ -24,8 +24,10 @@
 ## 2. 무엇이 바뀌었나
 
 ### 그대로인 것 (수정하지 않음)
-`back/src/` 안의 질의응답 엔진: LangGraph, RAG(문서 검색), MCP(도구 조회), 멀티모달, DB 계층.
+`back/src/` 안의 질의응답 엔진: LangGraph, RAG(문서 검색), MCP(도구 조회), 멀티모달.
 3차에서 이미 평가를 마친 코드라서, 건드리면 품질이 달라질 위험이 있어 **읽기만** 합니다.
+
+DB 계층(`back/src/db`)도 3차 것을 쓰되, **대화 제목 변경 기능**만 추가되었습니다(`rename_conversation`, `conversations.title_is_custom` 컬럼, 마이그레이션 `0006`).
 
 ### 빠진 것 (Streamlit 전용 코드)
 `app/chat.py`, `app/ui_components.py`, `app/browser_auth.py`, `app/attachments.py`
@@ -39,8 +41,8 @@ Streamlit 화면과 쿠키 로그인을 위한 파일이라서 웹 서버 방식
 | `back/chat/urls.py` | 주소 연결 (`/`, `/api/chat/`, `/api/health/`) |
 | `back/chat/apps.py` | 서버가 켜질 때 모델을 미리 준비(웜업) |
 | `back/chat/accounts.py` | 가입, 로그인, 로그아웃, 내 정보 (계정은 3차 DB 계층 재사용, 서명된 쿠키 세션에 user_id만 저장(DB 세션 테이블 불필요), 가입 규칙은 3차보다 엄격하게 4차에서 추가 검사) |
-| `back/chat/tests.py`, `test_accounts.py` | 웹 계층 테스트 112개 |
-| `back/chat/queries.py` | 대화 제목 검색, 제목 변경 (3차 DB 계층에 없는 기능이라, 코어는 수정하지 않고 코어의 모델을 그대로 써서 4차 쪽에 구현) |
+| `back/chat/tests.py`, `test_accounts.py` | 웹 계층 테스트 102개 |
+| `back/chat/queries.py` | 대화 제목 검색 (3차 DB 계층에 없는 기능이라 4차 쪽에 구현, 코어의 모델을 그대로 사용) |
 | `back/chat/conversations.py` | 대화 목록, 불러오기, 삭제, 저장된 이미지 보여 주기 (소유자 확인은 3차 DB 계층) |
 | `front/` | 채팅 화면: 로그인·가입, 대화 목록, 마크다운 답변 (`chat.html`, `chat.css`, `chat.js`, `markdown.js`) |
 | `pyproject.toml` | 의존성을 Django 중심으로 새로 정리 (Streamlit, torch 제거) |

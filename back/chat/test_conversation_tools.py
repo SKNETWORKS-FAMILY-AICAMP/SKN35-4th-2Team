@@ -1,4 +1,4 @@
-"""대화 제목 검색과 제목 변경. 검색·변경 쿼리는 실제 SQL(메모리 SQLite)로, 화면 API는 쿼리 함수를 가짜로 바꿔서 시험한다.
+"""대화 제목 검색. (제목 변경은 3차 DB 계층 함수와 test_rename.py가 다룬다.) 검색·변경 쿼리는 실제 SQL(메모리 SQLite)로, 화면 API는 쿼리 함수를 가짜로 바꿔서 시험한다.
 
     uv run python back/manage.py test chat
 """
@@ -71,6 +71,17 @@ class SearchQueryTests(SimpleTestCase):
         add_conversation(self.session, self.alice, "MCP 서버 연결 오류")
         self.assertEqual(self.titles("  mcp    서버  "), ["MCP 서버 연결 오류"])
 
+    def test_every_word_must_be_in_title_in_any_order_and_spacing(self):
+        add_conversation(self.session, self.alice, "체크포인터   정리")  # 중간 공백이 여러 개인 제목 (제목 변경은 중간 공백을 그대로 둔다)
+        add_conversation(self.session, self.alice, "체크포인터 설명")
+        self.assertEqual(self.titles("체크포인터 정리"), ["체크포인터   정리"])
+        self.assertEqual(self.titles("정리 체크포인터"), ["체크포인터   정리"])  # 순서는 상관없다
+        self.assertEqual(self.titles("체크포인터 없는단어"), [])  # 한 단어라도 없으면 찾지 않는다
+
+    def test_blank_query_finds_nothing(self):
+        add_conversation(self.session, self.alice, "질문")
+        self.assertEqual(self.titles("   "), [])
+
     def test_only_my_conversations_are_searched(self):
         add_conversation(self.session, self.alice, "내 비밀 질문")
         add_conversation(self.session, self.bob, "남의 비밀 질문")
@@ -104,52 +115,6 @@ class SearchQueryTests(SimpleTestCase):
     def test_no_match_returns_empty(self):
         add_conversation(self.session, self.alice, "질문")
         self.assertEqual(self.titles("없는말"), [])
-
-
-class RenameQueryTests(SimpleTestCase):
-    def setUp(self):
-        self.session = memory_session()
-        self.addCleanup(self.session.close)
-        self.alice = add_user(self.session, "alice01")
-        self.bob = add_user(self.session, "bob01")
-        self.conversation = add_conversation(self.session, self.alice, "원래 제목")
-
-    def rename(self, title, user=None, conversation_id=None):
-        return queries.rename_conversation(self.session, (user or self.alice).id, conversation_id or self.conversation.id, title)
-
-    def test_rename_changes_title(self):
-        self.assertEqual(self.rename("  새   제목 ").title, "새 제목")
-
-    def test_rename_keeps_updated_at_so_list_order_does_not_change(self):
-        self.rename("새 제목")
-        self.session.expire_all()
-        self.assertEqual(self.session.get(Conversation, self.conversation.id).updated_at, OLD)
-
-    def test_cannot_rename_others_conversation(self):
-        self.assertIsNone(self.rename("해킹", user=self.bob))
-        self.session.expire_all()
-        self.assertEqual(self.session.get(Conversation, self.conversation.id).title, "원래 제목")
-
-    def test_missing_conversation_returns_none(self):
-        self.assertIsNone(self.rename("제목", conversation_id=999999))
-
-    def test_invalid_titles_are_rejected_before_touching_db(self):
-        for bad in ("", "   ", "\n\t", None, 123, ["a"]):
-            with self.assertRaises(ValueError, msg=repr(bad)):
-                self.rename(bad)
-        with self.assertRaises(ValueError):
-            self.rename("가" * (queries.TITLE_MAX_CHARS + 1))
-
-    def test_title_length_boundary(self):
-        self.assertEqual(len(self.rename("가" * queries.TITLE_MAX_CHARS).title), queries.TITLE_MAX_CHARS)
-
-    def test_control_characters_and_newlines_become_spaces(self):
-        self.assertEqual(self.rename("줄1\n줄2\x00끝").title, "줄1 줄2 끝")
-
-    def test_secrets_in_title_are_masked_like_messages(self):
-        title = self.rename("키 sk-proj-abcdefghijklmnopqrstuvwxyz0123456789ABCD 오류").title
-        self.assertNotIn("abcdefghijklmnopqrstuvwxyz", title)
-        self.assertIn("MASKED", title)
 
 
 @contextmanager
@@ -202,70 +167,3 @@ class SearchApiTests(TestCase):
         response = self.client.get(self.URL, {"q": "a"})
         self.assertEqual(response.status_code, 503)
         self.assertNotIn("xyz", response.content.decode())
-
-
-class RenameApiTests(TestCase):
-    URL = "/api/conversations/12/"
-
-    def use(self, **targets):
-        patches = [mock.patch("chat.conversations.db_session", fake_db_session)] + [mock.patch(f"chat.conversations.{n}", v) for n, v in targets.items()]
-        for patch in patches:
-            patch.start()
-            self.addCleanup(patch.stop)
-
-    def patch(self, payload, client=None):
-        return (client or self.client).patch(self.URL, data=json.dumps(payload), content_type="application/json")
-
-    def setUp(self):
-        log_in(self.client)
-
-    def test_rename_success(self):
-        rename = mock.Mock(return_value=conv(12, "새 제목"))
-        self.use(rename_conversation=rename)
-        response = self.patch({"title": "새 제목"})
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"id": 12, "title": "새 제목", "updated_at": "2026-11-04T01:02:03Z"})
-        self.assertEqual(rename.call_args.args[1:], (7, 12, "새 제목"))  # 세션의 사용자 번호, 주소의 대화 번호
-
-    def test_invalid_title_message_is_400(self):
-        self.use(rename_conversation=mock.Mock(side_effect=ValueError("제목을 입력해 주세요.")))
-        response = self.patch({"title": " "})
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json()["error"], "제목을 입력해 주세요.")
-
-    def test_bad_body_is_400_and_does_not_touch_db(self):
-        rename = mock.Mock()
-        self.use(rename_conversation=rename)
-        self.assertEqual(self.client.patch(self.URL, data="not json", content_type="application/json").status_code, 400)
-        rename.assert_not_called()
-
-    def test_missing_title_field_is_400(self):
-        self.use(rename_conversation=mock.Mock(side_effect=ValueError("제목을 입력해 주세요.")))
-        self.assertEqual(self.patch({}).status_code, 400)
-        self.assertEqual(self.patch(["제목"]).status_code, 400)
-
-    def test_other_or_missing_conversation_is_404(self):
-        self.use(rename_conversation=mock.Mock(return_value=None))
-        self.assertEqual(self.patch({"title": "제목"}).status_code, 404)
-
-    def test_rename_requires_login(self):
-        rename = mock.Mock()
-        self.use(rename_conversation=rename)
-        self.assertEqual(self.patch({"title": "제목"}, client=Client()).status_code, 401)
-        rename.assert_not_called()
-
-    def test_rename_requires_csrf_token(self):
-        strict = Client(enforce_csrf_checks=True)
-        log_in(strict)
-        self.use(rename_conversation=mock.Mock(return_value=conv()))
-        self.assertEqual(self.patch({"title": "제목"}, client=strict).status_code, 403)
-
-    def test_db_failure_is_503_without_details(self):
-        self.use(rename_conversation=mock.Mock(side_effect=RuntimeError("password=xyz")))
-        response = self.patch({"title": "제목"})
-        self.assertEqual(response.status_code, 503)
-        self.assertNotIn("xyz", response.content.decode())
-
-    def test_other_methods_are_still_rejected(self):
-        self.assertEqual(self.client.post(self.URL).status_code, 405)
-        self.assertEqual(self.client.put(self.URL).status_code, 405)

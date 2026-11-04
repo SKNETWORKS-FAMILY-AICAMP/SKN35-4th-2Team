@@ -3,11 +3,11 @@
 
 GET    /api/attachments/<id>/     → 저장된 이미지 (기본은 썸네일 JPEG, ?size=full이면 원본). 본인 것만, 없거나 남의 것이면 404
 GET    /api/conversations/        → {"conversations": [{"id", "title", "updated_at"}, ...]}   최근 수정순
-GET    /api/conversations/?q=검색어 → 제목에 검색어가 있는 대화만 (대화 내용은 검색하지 않는다). 대소문자 구분 없음, 검색어는 100자까지, 결과는 50개까지.
+GET    /api/conversations/?q=검색어 → 제목에 검색어가 있는 대화만 (대화 내용은 검색하지 않는다). 공백으로 나눈 단어가 모두 제목에 있으면 찾는다. 대소문자 구분 없음, 검색어는 100자까지, 결과는 50개까지.
                                      검색어가 비어 있으면 전체 목록. 응답 형식은 목록과 같다
 GET    /api/conversations/<id>/   → {"id", "title", "messages": [{"role", "content", "sources", "images": [{"id", "width", "height"}], "created_at"}, ...]}   오래된 것부터
 DELETE /api/conversations/<id>/   → {}
-PATCH  /api/conversations/<id>/   {"title": "새 제목"} → {"id", "title", "updated_at"}   제목 변경 (1~100자, 앞뒤·중복 공백과 줄바꿈은 정리). 목록 순서는 바뀌지 않는다
+PATCH  /api/conversations/<id>/   {"title": "새 제목"} → {"id", "title"}   제목 변경 (공백을 뺀 1~100자). 목록 순서는 바뀌지 않고, 직접 바꾼 제목은 첫 질문으로 다시 덮어쓰지 않는다
 
 로그인하지 않았으면 401, 입력이 올바르지 않으면 400({"error": 사용자에게 보여 줄 문장}), 없거나 남의 대화면 404(존재 여부를 알려 주지 않는다), DB 문제면 503. 시각은 UTC ISO 문자열(끝에 Z).
 """
@@ -19,9 +19,10 @@ from django.http import HttpResponse, JsonResponse
 from django.views.decorators.http import require_GET, require_http_methods
 
 from src.db import db_session, delete_conversation, get_image, image_bytes, list_conversations, list_messages, thumbnail_bytes
+from src.db.repository import rename_conversation  # 제목 변경은 코어(3차 DB 계층)의 함수를 쓴다
 
 from .accounts import current_user_id, error
-from .queries import QUERY_MAX_CHARS, rename_conversation, search_conversations
+from .queries import QUERY_MAX_CHARS, search_conversations
 
 logger = logging.getLogger(__name__)
 
@@ -66,20 +67,26 @@ def conversation_detail(request, conversation_id):
     user_id = current_user_id(request)
     if user_id is None:
         return error(LOGIN_REQUIRED, 401)
-    new_title = None
     if request.method == "PATCH":
         try:
             body = json.loads(request.body.decode("utf-8"))
         except (ValueError, UnicodeDecodeError):
             return error("요청 형식이 올바르지 않습니다.", 400)
-        new_title = body.get("title") if isinstance(body, dict) else None
+        title = body.get("title") if isinstance(body, dict) else None
+        if not isinstance(title, str) or not 1 <= len(title.strip()) <= 100:
+            return error("제목은 공백을 제외하고 1~100자로 입력해 주세요.", 400)
+        try:
+            with db_session() as session:
+                conv = rename_conversation(session, conversation_id, user_id, title)
+                payload = {"id": conv.id, "title": conv.title}
+            return JsonResponse(payload)
+        except PermissionError:
+            return error(NOT_FOUND, 404)
+        except Exception:
+            logger.exception("대화 제목 변경 DB 오류")
+            return error("제목을 저장하지 못했습니다. 다시 시도해 주세요.", 503)
     try:
         with db_session() as session:
-            if request.method == "PATCH":
-                renamed = rename_conversation(session, user_id, conversation_id, new_title)  # 제목이 올바르지 않으면 ValueError
-                if renamed is None:
-                    return error(NOT_FOUND, 404)
-                return JsonResponse({"id": renamed.id, "title": renamed.title, "updated_at": iso(renamed.updated_at)})
             if request.method == "DELETE":
                 if not delete_conversation(session, conversation_id, user_id):
                     return error(NOT_FOUND, 404)
@@ -96,8 +103,6 @@ def conversation_detail(request, conversation_id):
             }
     except PermissionError:
         return error(NOT_FOUND, 404)
-    except ValueError as problem:  # 제목이 비었거나 너무 길 때 (사용자에게 보여 줄 문장)
-        return error(str(problem), 400)
     except Exception:
         logger.exception("대화 DB 오류")
         return error(DB_PROBLEM, 503)
