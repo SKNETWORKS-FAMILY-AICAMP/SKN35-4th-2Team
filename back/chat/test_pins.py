@@ -153,3 +153,23 @@ class PinTests(TestCase):
     def test_delete_without_pin_table_still_works(self):
         metadata.drop_all(self.engine)
         self.assertEqual(self.client.delete(f'/api/conversations/{self.id}/').status_code, 200)
+
+    def test_search_preserves_filter_and_prioritizes_matching_pins(self):
+        with session_scope(self.factory) as session:
+            session.get(Conversation, self.id).title = 'MCP older'
+            session.get(Conversation, self.newer).title = 'MCP newer'
+            irrelevant = create_conversation(session, self.owner, 'unrelated').id
+        self.pin(True)
+        self.pin(True, url=f'/api/conversations/{irrelevant}/pin/')
+        response = self.client.get('/api/conversations/', {'q': 'mcp'})
+        self.assertEqual(response.status_code, 200)
+        rows = response.json()['conversations']
+        self.assertEqual([row['id'] for row in rows], [self.id, self.newer])
+        self.assertEqual([row['is_pinned'] for row in rows], [True, False])
+        self.assertEqual(self.client.get('/api/conversations/', {'q': 'no match'}).json()['conversations'], [])
+
+    def test_search_works_before_pin_migration(self):
+        metadata.drop_all(self.engine)
+        response = self.client.get('/api/conversations/', {'q': 'older'})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([row['id'] for row in response.json()['conversations']], [self.id])

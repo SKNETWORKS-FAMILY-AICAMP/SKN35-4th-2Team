@@ -1,9 +1,3 @@
-// 답변의 마크다운(제목, 목록, 코드, 굵게, 링크)을 화면 요소로 바꾼다.
-// 안전을 위해 HTML 문자열을 만들지 않고, 요소를 직접 만든 뒤 textContent로만 글을 넣는다.
-// (답변에 <script> 같은 글이 있어도 그냥 글자로 보인다.) 링크는 http/https만 허용한다.
-//
-// 사용: container.replaceChildren(renderMarkdown(text))
-
 function isSafeHttpUrl(value) {
   try {
     const url = new URL(value);
@@ -14,7 +8,8 @@ function isSafeHttpUrl(value) {
 }
 
 // 한 줄 안의 `코드`, **굵게**, [글자](주소)를 처리한다
-const INLINE_PATTERN = /(`[^`\n]+`)|(\*\*[^*\n]+\*\*)|(\[[^\]\n]+\]\([^)\s]+\))/g;
+const INLINE_PATTERN =
+  /(`[^`\n]+`)|(\*\*[^*\n]+\*\*)|(\[[^\]\n]+\]\([^)\s]+\))/g;
 
 function appendInline(parent, text) {
   let last = 0;
@@ -84,19 +79,27 @@ async function copyCodeText(text) {
 
 function renderMarkdown(source) {
   const fragment = document.createDocumentFragment();
-  const lines = String(source || "").replace(/\r\n?/g, "\n").split("\n");
+  const lines = String(source || "")
+    .replace(/\r\n?/g, "\n")
+    .split("\n");
   let i = 0;
   while (i < lines.length) {
     const line = lines[i];
 
-    if (!line.trim()) { i += 1; continue; }
+    if (!line.trim()) {
+      i += 1;
+      continue;
+    }
 
     // ``` 코드 블록 (스트리밍 중 아직 닫히지 않았어도 끝까지 코드로 보여 준다)
     const fence = line.match(/^\s*```\s*([\w+-]*)/);
     if (fence) {
       const body = [];
       i += 1;
-      while (i < lines.length && !/^\s*```\s*$/.test(lines[i])) { body.push(lines[i]); i += 1; }
+      while (i < lines.length && !/^\s*```\s*$/.test(lines[i])) {
+        body.push(lines[i]);
+        i += 1;
+      }
       i += 1; // 닫는 ```
       const pre = document.createElement("pre");
       const code = document.createElement("code");
@@ -171,7 +174,9 @@ function renderMarkdown(source) {
 
     const heading = line.match(/^(#{1,4})\s+(.*)$/);
     if (heading) {
-      const element = document.createElement(`h${Math.min(heading[1].length + 2, 6)}`); // # 는 h3부터 (화면 제목보다 작게)
+      const element = document.createElement(
+        `h${Math.min(heading[1].length + 2, 6)}`,
+      ); // # 는 h3부터 (화면 제목보다 작게)
       appendInline(element, heading[2]);
       fragment.append(element);
       i += 1;
@@ -197,7 +202,10 @@ function renderMarkdown(source) {
     if (/^\s*>\s?/.test(line)) {
       const quote = document.createElement("blockquote");
       const body = [];
-      while (i < lines.length && /^\s*>\s?/.test(lines[i])) { body.push(lines[i].replace(/^\s*>\s?/, "")); i += 1; }
+      while (i < lines.length && /^\s*>\s?/.test(lines[i])) {
+        body.push(lines[i].replace(/^\s*>\s?/, ""));
+        i += 1;
+      }
       appendLines(quote, body);
       fragment.append(quote);
       continue;
@@ -205,8 +213,15 @@ function renderMarkdown(source) {
 
     // 문단: 빈 줄이나 다른 블록이 나올 때까지
     const paragraph = [];
-    while (i < lines.length && lines[i].trim() && !/^\s*```/.test(lines[i]) && !/^#{1,4}\s/.test(lines[i])
-      && !bullet.test(lines[i]) && !numbered.test(lines[i]) && !/^\s*>\s?/.test(lines[i])) {
+    while (
+      i < lines.length &&
+      lines[i].trim() &&
+      !/^\s*```/.test(lines[i]) &&
+      !/^#{1,4}\s/.test(lines[i]) &&
+      !bullet.test(lines[i]) &&
+      !numbered.test(lines[i]) &&
+      !/^\s*>\s?/.test(lines[i])
+    ) {
       paragraph.push(lines[i]);
       i += 1;
     }

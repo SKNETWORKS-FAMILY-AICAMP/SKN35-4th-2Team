@@ -1,13 +1,3 @@
-// 채팅 화면의 동작. 서버와는 아래 "약속"(주소와 형식)으로만 대화한다. 서버가 답을 어떻게 만드는지는 모른다.
-//   POST /api/auth/signup/, /api/auth/login/  {"username", "password"}  → {"user": {...}} 또는 {"error": "..."}
-//   POST /api/auth/logout/ , GET /api/auth/me/ → {"user": {...} 또는 null}
-//   GET  /api/conversations/                → {"conversations": [{"id", "title", "updated_at"}]}
-//   GET  /api/conversations/<id>/           → {"id", "title", "messages": [{"role", "content", "sources"}]}
-//   DELETE /api/conversations/<id>/
-//   POST /api/chat/  {"question": "...", "conversation_id": 12 (이어서 질문할 때만)}
-//     응답은 stage(처리 단계) / token(답변 조각) / sources(출처) / done(전체 답변) / error(오류 문장) 이벤트
-// 답변은 renderMarkdown(markdown.js)으로 그리고, 서버가 준 글은 모두 textContent로만 넣는다(HTML로 실행되지 않게).
-
 const authEl = document.getElementById("auth");
 const appEl = document.getElementById("app");
 const messagesEl = document.getElementById("messages");
@@ -18,9 +8,17 @@ const sendButton = document.getElementById("send");
 const listEl = document.getElementById("conversations");
 const userNameEl = document.getElementById("user-name");
 const welcomeTemplate = document.getElementById("welcome").cloneNode(true);
+const fileInput = document.getElementById("file-input");
+const attachButton = document.getElementById("attach");
+const previewsEl = document.getElementById("previews");
+
+const MAX_IMAGES = 3; // 서버와 같은 한도 (서버가 다시 검사한다)
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 한 장 10MB (2MB를 넘는 이미지는 서버가 줄여서 저장한다)
+const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"];
 
 let conversationId = null; // 지금 열려 있는 대화 (null이면 새 대화)
 let busy = false; // 답변을 받는 중에는 대화를 바꾸거나 지우지 못하게 한다
+let pending = []; // 보내기 전에 첨부한 이미지 파일들
 
 // ---------------------------------------------------------------- 공통
 function csrfToken() {
@@ -36,14 +34,54 @@ async function api(url, { method = "GET", body } = {}) {
   }
   const response = await fetch(url, options);
   let data = {};
-  try { data = await response.json(); } catch (error) { /* 본문이 없거나 JSON이 아니면 빈 값 */ }
-  if (!response.ok && !data.error) data.error = `서버 오류(${response.status})가 발생했습니다. 잠시 후 다시 시도하고, 계속되면 팀에 알려 주세요.`;
+  try {
+    data = await response.json();
+  } catch (error) {
+    /* 본문이 없거나 JSON이 아니면 빈 값 */
+  }
+  if (!response.ok && !data.error)
+    data.error = `서버 오류(${response.status})가 발생했습니다. 잠시 후 다시 시도하고, 계속되면 팀에 알려 주세요.`;
   return { ok: response.ok, status: response.status, data };
 }
 
 function scrollToEnd() {
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
+
+// ---------------------------------------------------------------- 테마 (라이트/다크)
+// 고른 값은 이 브라우저에만 저장한다. 고른 적이 없으면 시스템 설정을 따른다(CSS가 처리).
+const THEME_KEY = "codeclue-theme";
+const systemDark = window.matchMedia("(prefers-color-scheme: dark)");
+
+function currentTheme() {
+  return (
+    document.documentElement.dataset.theme ||
+    (systemDark.matches ? "dark" : "light")
+  );
+}
+
+function updateThemeButtons() {
+  const next = currentTheme() === "dark" ? "라이트" : "다크";
+  document.querySelectorAll(".theme-toggle").forEach((button) => {
+    button.setAttribute("aria-label", `${next} 모드로 바꾸기`);
+    button.title = `${next} 모드`;
+  });
+}
+
+document.querySelectorAll(".theme-toggle").forEach((button) =>
+  button.addEventListener("click", () => {
+    const theme = currentTheme() === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = theme;
+    try {
+      localStorage.setItem(THEME_KEY, theme);
+    } catch (error) {
+      /* 저장이 막혀 있어도 이번 화면에는 적용된다 */
+    }
+    updateThemeButtons();
+  }),
+);
+systemDark.addEventListener("change", updateThemeButtons);
+updateThemeButtons();
 
 function isSafeUrl(value) {
   try {
@@ -58,7 +96,9 @@ function isSafeUrl(value) {
 const authForm = document.getElementById("auth-form");
 const authError = document.getElementById("auth-error");
 const authSubmit = document.getElementById("auth-submit");
-const authRules = document.getElementById("auth-rules");
+const authHints = document.querySelectorAll(".signup-only");
+const authTitle = document.querySelector(".auth-title");
+const authSub = document.querySelector(".auth-sub");
 const authUsername = document.getElementById("auth-username");
 const authPassword = document.getElementById("auth-password");
 const tabLogin = document.getElementById("tab-login");
@@ -66,21 +106,59 @@ const tabSignup = document.getElementById("tab-signup");
 let authMode = "login";
 
 function setAuthMode(mode) {
+  // 로그인 ↔ 가입으로 바꾸면 적던 값을 비운다 (같은 탭을 다시 누르면 그대로 둔다)
+  if (mode !== authMode) {
+    authUsername.value = "";
+    authPassword.value = "";
+  }
   authMode = mode;
   tabLogin.setAttribute("aria-selected", String(mode === "login"));
   tabSignup.setAttribute("aria-selected", String(mode === "signup"));
   authSubmit.textContent = mode === "login" ? "로그인" : "가입하고 시작하기";
-  authRules.hidden = mode !== "signup";
-  authPassword.autocomplete = mode === "login" ? "current-password" : "new-password";
+  authTitle.textContent =
+    mode === "login" ? "다시 오신 걸 환영해요" : "CodeClue 시작하기";
+  authSub.textContent =
+    mode === "login"
+      ? "계정으로 로그인하고 대화를 이어가세요."
+      : "아이디와 비밀번호만 있으면 바로 시작할 수 있어요.";
+  authHints.forEach((hint) => {
+    hint.hidden = mode !== "signup";
+  });
+  authPassword.autocomplete =
+    mode === "login" ? "current-password" : "new-password";
   showAuthError("");
 }
 
 function showAuthError(message) {
   authError.textContent = message;
   authError.hidden = !message;
+  if (!message)
+    [authUsername, authPassword].forEach((field) =>
+      field.removeAttribute("aria-invalid"),
+    );
 }
 
+// 빈 칸이면 브라우저 기본 풍선 대신 화면 안에 알려 준다 (형식 검사는 서버가 한다)
+function checkAuthFields() {
+  const empty = [
+    [authUsername, "아이디"],
+    [authPassword, "비밀번호"],
+  ].filter(([field]) => !field.value.trim());
+  if (!empty.length) return true;
+  empty.forEach(([field]) => field.setAttribute("aria-invalid", "true"));
+  showAuthError(
+    `${empty.map(([, name]) => name).join("와 ")}를 입력해 주세요.`,
+  );
+  empty[0][0].focus();
+  return false;
+}
+
+[authUsername, authPassword].forEach((field) =>
+  field.addEventListener("input", () => field.removeAttribute("aria-invalid")),
+);
+
 function showAuth(message = "") {
+  closeNav();
   appEl.hidden = true;
   authEl.hidden = false;
   showAuthError(message);
@@ -90,6 +168,9 @@ function showApp(user) {
   authEl.hidden = true;
   appEl.hidden = false;
   userNameEl.textContent = user.username;
+  document.getElementById("user-avatar").textContent = (
+    user.username || "?"
+  ).charAt(0);
   authPassword.value = "";
   newChat();
   loadConversations();
@@ -101,10 +182,14 @@ tabSignup.addEventListener("click", () => setAuthMode("signup"));
 
 authForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  authSubmit.disabled = true;
   showAuthError("");
+  if (!checkAuthFields()) return;
+  authSubmit.disabled = true;
   try {
-    const { ok, data } = await api(`/api/auth/${authMode}/`, { method: "POST", body: { username: authUsername.value, password: authPassword.value } });
+    const { ok, data } = await api(`/api/auth/${authMode}/`, {
+      method: "POST",
+      body: { username: authUsername.value, password: authPassword.value },
+    });
     if (ok) showApp(data.user);
     else showAuthError(data.error || "요청을 처리하지 못했습니다.");
   } catch (error) {
@@ -116,26 +201,85 @@ authForm.addEventListener("submit", async (event) => {
 
 document.getElementById("logout").addEventListener("click", async () => {
   if (busy) return;
-  try { await api("/api/auth/logout/", { method: "POST" }); } catch (error) { /* 서버에 닿지 않아도 화면은 로그아웃 상태로 */ }
+  try {
+    await api("/api/auth/logout/", { method: "POST" });
+  } catch (error) {
+    /* 서버에 닿지 않아도 화면은 로그아웃 상태로 */
+  }
   authPassword.value = "";
+  clearPending();
   showAuth();
 });
 
 // ---------------------------------------------------------------- 말풍선
-function addBubble(role, text) {
+// images: 질문에 붙은 이미지 [{src, href}] (href가 있으면 누르면 원본이 새 탭에서 열린다)
+function addBubble(role, text, images = []) {
   const welcome = document.getElementById("welcome");
   if (welcome) welcome.remove();
   const bubble = document.createElement("div");
   bubble.className = `bubble ${role}`;
-  if (role === "assistant") bubble.replaceChildren(renderMarkdown(text));
-  else bubble.textContent = text;
+  if (role === "assistant") {
+    bubble.replaceChildren(renderMarkdown(text));
+  } else {
+    if (text) bubble.append(text); // 글자 그대로 넣는다 (HTML로 실행되지 않게)
+    if (images.length) {
+      const box = document.createElement("div");
+      box.className = "bubble-images";
+      images.forEach((image) => {
+        const picture = document.createElement("img");
+        picture.src = image.src;
+        picture.alt = "첨부 이미지";
+        if (image.href) {
+          const link = document.createElement("a");
+          link.href = image.href;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          link.append(picture);
+          box.append(link);
+        } else {
+          box.append(picture);
+        }
+      });
+      bubble.append(box);
+    }
+  }
   messagesEl.appendChild(bubble);
   scrollToEnd();
   return bubble;
 }
 
+// 답변 첫 조각이 오기 전까지 말풍선 안에 보여 주는 "점 세 개 + 지금 하는 일"
+function showTyping(bubble, label) {
+  const box = document.createElement("div");
+  box.className = "typing";
+  const dots = document.createElement("span");
+  dots.className = "dots";
+  dots.setAttribute("aria-hidden", "true");
+  dots.append(
+    document.createElement("span"),
+    document.createElement("span"),
+    document.createElement("span"),
+  );
+  const text = document.createElement("span");
+  text.className = "typing-label";
+  text.textContent = label;
+  box.append(dots, text);
+  bubble.replaceChildren(box);
+  bubble.setAttribute("aria-busy", "true");
+  scrollToEnd();
+}
+
+function setTypingLabel(bubble, label) {
+  const text = bubble.querySelector(".typing-label");
+  if (text) text.textContent = label;
+}
+
+// Code copy is handled once per block in markdown.js.
+
 function showSources(sources) {
-  const usable = (sources || []).filter((source) => source && isSafeUrl(source.url));
+  const usable = (sources || []).filter(
+    (source) => source && isSafeUrl(source.url),
+  );
   if (!usable.length) return;
   const box = document.createElement("div");
   box.className = "sources";
@@ -155,6 +299,139 @@ function showSources(sources) {
   box.append(title, list);
   messagesEl.appendChild(box);
   scrollToEnd();
+}
+
+// ---------------------------------------------------------------- 좁은 화면의 대화 목록 서랍
+const menuButton = document.getElementById("menu-button");
+const sidebarEl = document.getElementById("sidebar");
+const narrowScreen = window.matchMedia("(max-width: 760px)");
+
+function setNavOpen(open) {
+  appEl.classList.toggle("nav-open", open);
+  menuButton.setAttribute("aria-expanded", String(open));
+  menuButton.setAttribute(
+    "aria-label",
+    open ? "대화 목록 닫기" : "대화 목록 열기",
+  );
+  sidebarEl.inert = narrowScreen.matches && !open; // 닫힌 서랍 안의 버튼에 Tab으로 들어가지 않게
+  if (open) document.getElementById("new-chat").focus();
+}
+
+function closeNav() {
+  if (appEl.classList.contains("nav-open")) setNavOpen(false);
+}
+
+menuButton.addEventListener("click", () =>
+  setNavOpen(!appEl.classList.contains("nav-open")),
+);
+document.getElementById("backdrop").addEventListener("click", closeNav);
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && appEl.classList.contains("nav-open")) {
+    closeNav();
+    menuButton.focus();
+  }
+});
+narrowScreen.addEventListener("change", () => setNavOpen(false)); // 화면 폭이 바뀌면 서랍을 닫힌 상태로 맞춘다
+setNavOpen(false);
+
+// ---------------------------------------------------------------- 알림(토스트)과 확인 창
+// 브라우저 기본 alert/confirm 대신 화면 테마에 맞춘 것을 쓴다. 글은 모두 textContent로만 넣는다.
+function iconSvg(name) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("aria-hidden", "true");
+  const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+  use.setAttribute("href", `#i-${name}`);
+  svg.append(use);
+  return svg;
+}
+
+// type: "success" 또는 "error". 몇 초 뒤 저절로 사라지고, 누르면 바로 닫힌다.
+function showToast(message, type = "success") {
+  let stack = document.getElementById("toasts");
+  if (!stack) {
+    stack = document.createElement("div");
+    stack.id = "toasts";
+    stack.className = "toasts";
+    stack.setAttribute("role", "status");
+    stack.setAttribute("aria-live", "polite");
+    document.body.append(stack);
+  }
+  const toast = document.createElement("div");
+  toast.className = `toast toast-${type}`;
+  const icon = document.createElement("span");
+  icon.className = "toast-icon";
+  icon.append(iconSvg(type === "error" ? "alert" : "check"));
+  const text = document.createElement("span");
+  text.textContent = message;
+  toast.append(icon, text);
+  stack.append(toast);
+  const dismiss = () => {
+    if (toast.classList.contains("leaving")) return;
+    toast.classList.add("leaving");
+    setTimeout(() => toast.remove(), 200);
+  };
+  toast.addEventListener("click", dismiss);
+  setTimeout(dismiss, type === "error" ? 4500 : 2800);
+}
+
+// 확인 창. 확인을 누르면 true, 취소·Esc·바깥 누르기면 false로 끝나는 Promise를 돌려준다.
+function confirmDialog({
+  title,
+  message,
+  confirmText = "확인",
+  danger = false,
+}) {
+  return new Promise((resolve) => {
+    const dialog = document.createElement("dialog");
+    dialog.className = "rename-dialog confirm-dialog";
+    dialog.setAttribute("aria-labelledby", "confirm-heading");
+    dialog.setAttribute("aria-describedby", "confirm-message");
+    const badge = document.createElement("span");
+    badge.className = `confirm-badge${danger ? " danger" : ""}`;
+    badge.append(iconSvg(danger ? "trash" : "alert"));
+    const heading = document.createElement("h2");
+    heading.id = "confirm-heading";
+    heading.textContent = title;
+    const body = document.createElement("p");
+    body.id = "confirm-message";
+    body.className = "confirm-message";
+    body.textContent = message;
+    const controls = document.createElement("div");
+    controls.className = "rename-controls";
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.textContent = "취소";
+    const ok = document.createElement("button");
+    ok.type = "button";
+    ok.className = danger ? "btn-danger" : "btn-confirm";
+    ok.textContent = confirmText;
+    controls.append(cancel, ok);
+    dialog.append(badge, heading, body, controls);
+
+    let answer = false;
+    cancel.addEventListener("click", () => dialog.close());
+    ok.addEventListener("click", () => {
+      answer = true;
+      dialog.close();
+    });
+    dialog.addEventListener("click", (event) => {
+      // 창 바깥(어두운 배경)을 누르면 취소
+      const box = dialog.getBoundingClientRect();
+      const inside =
+        event.clientX >= box.left &&
+        event.clientX <= box.right &&
+        event.clientY >= box.top &&
+        event.clientY <= box.bottom;
+      if (event.target === dialog && !inside) dialog.close();
+    });
+    dialog.addEventListener("close", () => {
+      dialog.remove();
+      resolve(answer);
+    });
+    document.body.append(dialog);
+    dialog.showModal();
+    cancel.focus(); // 되돌릴 수 없는 작업이라 기본 선택은 취소
+  });
 }
 
 // ---------------------------------------------------------------- 대화 목록
@@ -212,12 +489,12 @@ function renderConversationList(items) {
         });
         if (status === 401) return showAuth("로그인이 필요합니다.");
         if (!ok) throw new Error(data.error || "고정 상태를 저장하지 못했습니다.");
-        statusEl.textContent = data.is_pinned ? "대화를 고정했습니다." : "대화 고정을 해제했습니다.";
+        showToast(data.is_pinned ? "대화를 고정했어요." : "대화 고정을 해제했어요.");
         await loadConversations();
         const updated = listEl.querySelector(`[data-conversation-id="${item.id}"] summary`);
         if (updated) updated.focus();
       } catch (error) {
-        statusEl.textContent = `${error.message || "고정 상태 저장 실패."} 다시 시도해 주세요.`;
+        showToast(`${error.message || "고정 상태 저장 실패."} 다시 시도해 주세요.`, "error");
         actions.open = true;
         pin.focus();
       } finally { pin.disabled = false; }
@@ -228,7 +505,10 @@ function renderConversationList(items) {
     actions.append(toggle, menu);
     actions.addEventListener("click", (event) => event.stopPropagation());
     actions.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") { actions.open = false; toggle.focus(); }
+      if (event.key === "Escape") {
+        actions.open = false;
+        toggle.focus();
+      }
     });
     rename.addEventListener("click", () => {
       actions.open = false;
@@ -271,7 +551,9 @@ function editConversationTitle(item, titleButton, menuButton) {
   save.type = "submit";
   save.textContent = "저장";
   let saving = false;
-  const close = () => { if (!saving) dialog.close(); };
+  const close = () => {
+    if (!saving) dialog.close();
+  };
   cancel.addEventListener("click", close);
   dialog.addEventListener("cancel", (event) => {
     if (saving) event.preventDefault();
@@ -285,7 +567,9 @@ function editConversationTitle(item, titleButton, menuButton) {
     if (saving) return;
     const title = field.value.trim();
     if (!title || Array.from(title).length > 100) {
-      notice.textContent = title ? "제목은 100자 이하로 입력해 주세요." : "제목을 입력해 주세요.";
+      notice.textContent = title
+        ? "제목은 100자 이하로 입력해 주세요."
+        : "제목을 입력해 주세요.";
       field.setAttribute("aria-invalid", "true");
       field.focus();
       return;
@@ -295,14 +579,21 @@ function editConversationTitle(item, titleButton, menuButton) {
     notice.textContent = "";
     field.removeAttribute("aria-invalid");
     try {
-      const { ok, data } = await api(`/api/conversations/${item.id}/`, { method: "PATCH", body: { title } });
-      if (!ok) throw new Error(data.error || "제목을 저장하지 못했습니다. 다시 시도해 주세요.");
+      const { ok, data } = await api(`/api/conversations/${item.id}/`, {
+        method: "PATCH",
+        body: { title },
+      });
+      if (!ok)
+        throw new Error(
+          data.error || "제목을 저장하지 못했습니다. 다시 시도해 주세요.",
+        );
       item.title = data.title;
       // Text-only rendering; keep row position and the open conversation unchanged.
       titleButton.textContent = data.title;
       titleButton.title = data.title;
       menuButton.setAttribute("aria-label", `${data.title} 메뉴`);
       dialog.close();
+      showToast("대화 이름을 변경했어요.");
     } catch (error) {
       notice.textContent = `${error.message || "저장에 실패했습니다."} 제목을 확인하고 다시 저장해 주세요.`;
     } finally {
@@ -333,6 +624,8 @@ async function loadConversations() {
 
 function newChat() {
   if (busy) return;
+  closeNav();
+  clearPending();
   conversationId = null;
   messagesEl.replaceChildren(welcomeTemplate.cloneNode(true));
   statusEl.textContent = "";
@@ -340,36 +633,64 @@ function newChat() {
 }
 
 async function openConversation(id) {
-  if (busy || id === conversationId) return;
+  if (busy) return;
+  closeNav();
+  if (id === conversationId) return;
   try {
     const { ok, status, data } = await api(`/api/conversations/${id}/`);
     if (status === 401) return showAuth("로그인이 필요합니다.");
-    if (!ok) { statusEl.textContent = data.error || "대화를 불러오지 못했습니다."; return; }
+    if (!ok) {
+      statusEl.textContent = data.error || "대화를 불러오지 못했습니다.";
+      return;
+    }
     conversationId = data.id;
     messagesEl.replaceChildren();
     data.messages.forEach((message) => {
-      addBubble(message.role === "user" ? "user" : "assistant", message.content);
+      addBubble(
+        message.role === "user" ? "user" : "assistant",
+        message.content,
+        (message.images || []).map((image) => ({
+          src: `/api/attachments/${image.id}/`,
+          href: `/api/attachments/${image.id}/?size=full`,
+        })),
+      );
       if (message.role !== "user") showSources(message.sources);
     });
     statusEl.textContent = "";
     scrollToEnd();
     loadConversations();
   } catch (error) {
-    statusEl.textContent = "대화를 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.";
+    statusEl.textContent =
+      "대화를 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.";
   }
 }
 
 async function removeConversation(item) {
   if (busy) return;
-  if (!window.confirm(`"${item.title || "새 대화"}" 대화를 삭제할까요? 되돌릴 수 없습니다.`)) return;
+  const confirmed = await confirmDialog({
+    title: "대화를 삭제할까요?",
+    message: `"${item.title || "새 대화"}" 대화와 그 안의 질문·답변이 모두 지워집니다. 삭제한 대화는 되돌릴 수 없어요.`,
+    confirmText: "삭제",
+    danger: true,
+  });
+  if (!confirmed || busy) return;
   try {
-    const { ok, status, data } = await api(`/api/conversations/${item.id}/`, { method: "DELETE" });
+    const { ok, status, data } = await api(`/api/conversations/${item.id}/`, {
+      method: "DELETE",
+    });
     if (status === 401) return showAuth("로그인이 필요합니다.");
-    if (!ok) { statusEl.textContent = data.error || "대화를 삭제하지 못했습니다."; return; }
+    if (!ok) {
+      showToast(data.error || "대화를 삭제하지 못했습니다.", "error");
+      return;
+    }
     if (item.id === conversationId) newChat();
     else loadConversations();
+    showToast("대화를 삭제했어요.");
   } catch (error) {
-    statusEl.textContent = "대화를 삭제하지 못했습니다. 인터넷 연결을 확인해 주세요.";
+    showToast(
+      "대화를 삭제하지 못했습니다. 인터넷 연결을 확인해 주세요.",
+      "error",
+    );
   }
 }
 
@@ -391,28 +712,44 @@ function parseEvent(raw) {
   }
 }
 
-async function ask(question) {
-  addBubble("user", question);
+async function ask(question, files = []) {
+  addBubble(
+    "user",
+    question,
+    files.map((file) => ({ src: URL.createObjectURL(file) })),
+  );
   const answerBubble = addBubble("assistant", "");
   let answer = "";
   let failed = false;
   let renderQueued = false;
-  statusEl.textContent = "질문을 보내는 중…";
+  statusEl.textContent = "";
+  showTyping(answerBubble, "질문을 보내는 중…");
 
   // 조각이 올 때마다 마크다운을 다시 그리되, 화면 갱신 한 번에 한 번만 그린다
   const redraw = () => {
     renderQueued = false;
-    if (failed) return; // 오류 문구를 조각 그리기가 덮어쓰지 않게 한다
+    if (failed || !answer) return; // 오류 문구를 덮어쓰지 않고, 아직 조각이 없으면 기다림 표시를 둔다
     answerBubble.replaceChildren(renderMarkdown(answer));
+    answerBubble.removeAttribute("aria-busy");
     scrollToEnd();
   };
+  const showError = (message) => {
+    failed = true;
+    answerBubble.textContent = message;
+    answerBubble.classList.add("error");
+    answerBubble.removeAttribute("aria-busy");
+  };
 
-  const body = { question };
-  if (conversationId !== null) body.conversation_id = conversationId;
+  // 이미지를 함께 보낼 수 있으므로 양식(FormData)으로 보낸다. Content-Type은 브라우저가 경계 문자열과 함께 알아서 붙인다.
+  const body = new FormData();
+  body.append("question", question);
+  if (conversationId !== null)
+    body.append("conversation_id", String(conversationId));
+  files.forEach((file) => body.append("images", file));
   const response = await fetch("/api/chat/", {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken() },
-    body: JSON.stringify(body),
+    headers: { "X-CSRFToken": csrfToken() },
+    body,
   });
 
   if (response.status === 401) {
@@ -422,12 +759,15 @@ async function ask(question) {
   }
   if (!response.ok || !response.body) {
     let message = "서버에서 답을 받지 못했습니다.";
-    try { message = (await response.json()).error || message; } catch (error) { /* 본문이 JSON이 아니면 기본 문장 */ }
-    answerBubble.textContent = message;
-    answerBubble.classList.add("error");
-    statusEl.textContent = "";
+    try {
+      message = (await response.json()).error || message;
+    } catch (error) {
+      /* 본문이 JSON이 아니면 기본 문장 */
+    }
+    showError(message);
     return;
   }
+  setTypingLabel(answerBubble, "답변을 준비하는 중…");
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder("utf-8");
@@ -441,10 +781,13 @@ async function ask(question) {
       const { name, data } = parseEvent(buffer.slice(0, boundary));
       buffer = buffer.slice(boundary + 2);
       if (name === "stage") {
-        statusEl.textContent = data;
+        setTypingLabel(answerBubble, data);
       } else if (name === "token") {
         answer += data;
-        if (!renderQueued) { renderQueued = true; requestAnimationFrame(redraw); }
+        if (!renderQueued) {
+          renderQueued = true;
+          requestAnimationFrame(redraw);
+        }
       } else if (name === "sources") {
         showSources(data);
       } else if (name === "done") {
@@ -452,37 +795,139 @@ async function ask(question) {
         redraw();
         if (data.conversation_id) conversationId = data.conversation_id;
       } else if (name === "error") {
-        failed = true;
-        answerBubble.textContent = data.message || "오류가 발생했습니다.";
-        answerBubble.classList.add("error");
+        showError(data.message || "오류가 발생했습니다.");
         if (data.conversation_id) conversationId = data.conversation_id; // 질문은 저장됐으니 같은 대화에서 이어간다
       }
     }
   }
 
-  statusEl.textContent = "";
-  if (!failed && !answerBubble.classList.contains("error")) redraw();
+  if (!failed) {
+    if (answer) redraw();
+    else showError("답변이 비어 있습니다. 다시 시도해 주세요."); // 연결이 끝났는데 아무것도 오지 않았다
+  }
   loadConversations(); // 새 대화가 생겼거나 제목이 바뀌었을 수 있다
 }
+
+// ---------------------------------------------------------------- 이미지 첨부
+function showNotice(message) {
+  statusEl.textContent = message;
+  setTimeout(() => {
+    if (statusEl.textContent === message) statusEl.textContent = "";
+  }, 4000);
+}
+
+function renderPreviews() {
+  previewsEl.replaceChildren();
+  previewsEl.hidden = pending.length === 0;
+  pending.forEach((file, index) => {
+    const box = document.createElement("div");
+    box.className = "preview";
+    const picture = document.createElement("img");
+    picture.src = URL.createObjectURL(file);
+    picture.alt = file.name || "붙여넣은 이미지";
+    picture.addEventListener("load", () => URL.revokeObjectURL(picture.src));
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.textContent = "✕";
+    remove.setAttribute("aria-label", "첨부 취소");
+    remove.addEventListener("click", () => {
+      pending.splice(index, 1);
+      renderPreviews();
+    });
+    box.append(picture, remove);
+    previewsEl.append(box);
+  });
+}
+
+function clearPending() {
+  pending = [];
+  fileInput.value = "";
+  renderPreviews();
+}
+
+function addFiles(fileList) {
+  for (const file of Array.from(fileList || [])) {
+    if (!IMAGE_TYPES.includes(file.type)) {
+      showNotice("png, jpeg, webp 이미지만 첨부할 수 있어요.");
+      continue;
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      showNotice("한 장에 10MB 이하의 이미지만 첨부할 수 있어요.");
+      continue;
+    }
+    if (pending.length >= MAX_IMAGES) {
+      showNotice(`이미지는 한 번에 ${MAX_IMAGES}장까지 첨부할 수 있어요.`);
+      break;
+    }
+    pending.push(file);
+  }
+  renderPreviews();
+}
+
+attachButton.addEventListener("click", () => fileInput.click());
+fileInput.addEventListener("change", () => {
+  addFiles(fileInput.files);
+  fileInput.value = "";
+});
+
+input.addEventListener("paste", (event) => {
+  // 캡처 화면을 Ctrl+V로 바로 붙여넣기
+  const images = Array.from(event.clipboardData?.files || []).filter((file) =>
+    file.type.startsWith("image/"),
+  );
+  if (images.length) {
+    event.preventDefault();
+    addFiles(images);
+  }
+});
+
+form.addEventListener("dragover", (event) => {
+  event.preventDefault();
+  form.classList.add("dragging");
+});
+form.addEventListener("dragleave", () => form.classList.remove("dragging"));
+form.addEventListener("drop", (event) => {
+  event.preventDefault();
+  form.classList.remove("dragging");
+  addFiles(event.dataTransfer?.files);
+});
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   const question = input.value.trim();
-  if (!question || busy) return;
+  const files = pending.slice();
+  if ((!question && !files.length) || busy) return; // 이미지만 보내도 된다
   input.value = "";
+  autoGrow();
+  clearPending();
   busy = true;
   sendButton.disabled = true;
+  attachButton.disabled = true;
   try {
-    await ask(question);
+    await ask(question, files);
   } catch (error) {
-    statusEl.textContent = "";
-    addBubble("assistant", "연결에 문제가 생겼습니다. 인터넷 연결을 확인하고 다시 시도해 주세요.").classList.add("error");
+    // 기다림 표시가 남아 있는 말풍선이 있으면 그 자리에 오류를 보여 준다
+    const pending =
+      messagesEl.querySelector('.bubble[aria-busy="true"]') ||
+      addBubble("assistant", "");
+    pending.textContent =
+      "연결에 문제가 생겼습니다. 인터넷 연결을 확인하고 다시 시도해 주세요.";
+    pending.classList.add("error");
+    pending.removeAttribute("aria-busy");
   } finally {
     busy = false;
     sendButton.disabled = false;
+    attachButton.disabled = false;
     input.focus();
   }
 });
+
+// 입력창은 글 줄 수만큼 늘어난다 (최대 높이는 CSS의 max-height)
+function autoGrow() {
+  input.style.height = "auto";
+  input.style.height = `${input.scrollHeight}px`;
+}
+input.addEventListener("input", autoGrow);
 
 input.addEventListener("keydown", (event) => {
   if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {

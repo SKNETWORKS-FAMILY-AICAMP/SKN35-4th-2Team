@@ -115,6 +115,7 @@ python3 -c "import secrets; print(secrets.token_urlsafe(50))"
 ```
 
 > - `DJANGO_SECURE_COOKIES`는 **넣지 않습니다.** HTTP로 접속하는 동안 켜면 로그인이 되지 않습니다. HTTPS를 붙인 뒤에만 1로 켭니다.
+> - **이미지 저장 폴더**: 첨부 이미지는 서버 디스크의 파일로 저장됩니다(기본 `back/uploads/`, DB에는 경로만). 서버를 다시 만들어도 남기려면 `back/.env`에 `IMAGE_STORAGE_DIR=/home/ubuntu/codeclue-uploads` 처럼 지정하세요. 폴더는 `mkdir -p`로 미리 만들고, nginx의 `client_max_body_size`(32m)는 이미 설정 파일에 들어 있습니다.
 > - `DB_DATABASE`는 `skn35_4th`인지 확인하세요 (3차 DB `skn35_3rd`와 섞이지 않게).
 > - DB 테이블과 관리자 계정은 이미 `skn35_4th`에 만들어져 있어서, 서버에서 마이그레이션과 시드를 다시 할 필요가 없습니다.
 > - 로그인 상태는 서명된 쿠키에 담기므로 장고용 `migrate`도 필요 없습니다 (`DJANGO_SECRET_KEY`가 바뀌면 모두 로그아웃됩니다).

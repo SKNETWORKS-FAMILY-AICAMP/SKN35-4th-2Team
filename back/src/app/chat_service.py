@@ -239,7 +239,11 @@ def run_chat(messages, *, conversation_id=None, graph=None, images=None, on_toke
         else:
             result = dict(state)
             reporter.start()
-            for kind, event in engine.stream(state, config=config, stream_mode=["messages", "updates"]):
+            # answer, general 노드는 하위 그래프라서 subgraphs=True여야 답변 토큰이 실시간으로 나온다.
+            # 이때 (namespace, kind, event)가 오며, namespace가 ()이면 최상위 그래프다.
+            for namespace, kind, event in engine.stream(
+                state, config=config, stream_mode=["messages", "updates"], subgraphs=True
+            ):
                 if kind == "messages":
                     chunk, metadata = event
                     if metadata.get("langgraph_node") in ("answer", "general", "answer_node", "general_node"):
@@ -250,7 +254,8 @@ def run_chat(messages, *, conversation_id=None, graph=None, images=None, on_toke
                         )
                         if token and on_token is not None:
                             on_token(token)
-                elif kind == "updates":
+                elif kind == "updates" and not namespace:
+                    # 결과와 진행 단계는 지금까지처럼 최상위 그래프의 노드만 쓴다 (하위 그래프 안의 노드는 무시)
                     for node_name, update in event.items():
                         if isinstance(update, dict):
                             result.update(update)
