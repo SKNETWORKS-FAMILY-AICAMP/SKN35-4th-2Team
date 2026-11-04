@@ -185,3 +185,10 @@ class AttachmentTests(TestCase):
         self.assertEqual([i["id"] for i in data["messages"][0]["images"]], [5, 6])
         self.assertEqual(data["messages"][0]["images"][0], {"id": 5, "width": 640, "height": 480})
         self.assertEqual(data["messages"][1]["images"], [])
+
+
+class ImagePageContractTests(TestCase):
+    def test_template_supplies_elements_required_by_image_javascript(self):
+        response = self.client.get('/')
+        for element_id in ('file-input', 'attach', 'previews'):
+            self.assertContains(response, f'id="{element_id}"')

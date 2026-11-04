@@ -263,14 +263,19 @@
 
       <div class="composer-wrap">
         <div id="status" class="status" role="alert"></div>
+        <div id="previews" class="previews" aria-label="첨부 이미지 미리보기" hidden></div>
         <form id="chat-form" class="composer">
-          <!-- 이미지 첨부: chat.js가 #previews, #file-input, #attach를 쓴다 -->
-          <div id="previews" class="previews" hidden></div>
-          <input id="file-input" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden>
-          <button id="attach" type="button" class="icon-button attach" aria-label="이미지 첨부"
-            title="이미지 첨부 (최대 3장, 붙여넣기와 끌어놓기도 가능)"><svg>
+          <input id="file-input" type="file"
+            accept="image/png,image/jpeg,image/webp" multiple hidden>
+
+          <button id="attach" type="button"
+            class="icon-button attach"
+            aria-label="이미지 첨부"
+            title="이미지 첨부 (최대 3장, 붙여넣기와 끌어놓기도 가능)">
+            <svg aria-hidden="true">
               <use href="#i-attach" />
-            </svg></button>
+            </svg>
+          </button>
           <textarea id="question" rows="1" maxlength="4000" placeholder="오류 메시지나 궁금한 점을 입력하세요"
             aria-label="질문 입력"></textarea>
           <button id="send" type="submit" aria-label="보내기" title="보내기 (Enter)"><svg>

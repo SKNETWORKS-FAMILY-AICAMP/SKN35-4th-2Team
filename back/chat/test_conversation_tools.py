@@ -130,7 +130,7 @@ class SearchApiTests(TestCase):
     URL = "/api/conversations/"
 
     def use(self, **targets):
-        patches = [mock.patch("chat.conversations.db_session", fake_db_session)] + [mock.patch(f"chat.conversations.{n}", v) for n, v in targets.items()]
+        patches = [mock.patch("chat.conversations.db_session", fake_db_session), mock.patch("chat.conversations.pinned_conversations", return_value=[])] + [mock.patch(f"chat.conversations.{n}", v) for n, v in targets.items()]
         for patch in patches:
             patch.start()
             self.addCleanup(patch.stop)
@@ -142,8 +142,8 @@ class SearchApiTests(TestCase):
         search = mock.Mock(return_value=[conv(1, "MCP 오류"), conv(2, "MCP 연결")])
         self.use(search_conversations=search)
         data = self.client.get(self.URL, {"q": "  mcp   "}).json()["conversations"]
-        self.assertEqual(data[0], {"id": 1, "title": "MCP 오류", "updated_at": "2026-11-04T01:02:03Z"})
-        self.assertEqual([set(item) for item in data], [{"id", "title", "updated_at"}] * 2)  # 내용 검색이 없으므로 snippet이 없다
+        self.assertEqual(data[0], {"id": 1, "title": "MCP 오류", "updated_at": "2026-11-04T01:02:03Z", "is_pinned": False})
+        self.assertEqual([set(item) for item in data], [{"id", "title", "updated_at", "is_pinned"}] * 2)  # 내용 검색이 없으므로 snippet이 없다
         self.assertEqual(search.call_args.args[1:], (7, "mcp"))  # 세션의 사용자 번호, 공백을 정리한 검색어
 
     def test_empty_query_returns_normal_list_without_search(self):

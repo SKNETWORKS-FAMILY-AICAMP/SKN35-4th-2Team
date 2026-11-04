@@ -42,7 +42,9 @@ def message(role, content, sources=(), title="체크포인터 질문", images=()
 
 class ConversationTestCase(TestCase):
     def use(self, **targets):
-        patches = [mock.patch("chat.conversations.db_session", fake_db_session)]
+        patches = [mock.patch("chat.conversations.db_session", fake_db_session),
+                   mock.patch("chat.conversations.pinned_conversations", return_value=[]),
+                   mock.patch("chat.conversations.delete_pin")]
         patches += [mock.patch(f"chat.conversations.{name}", value) for name, value in targets.items()]
         for patch in patches:
             patch.start()
@@ -73,7 +75,7 @@ class ListTests(ConversationTestCase):
         self.use(list_conversations=listing)
         response = self.client.get(LIST_URL)
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["conversations"], [{"id": 12, "title": "질문", "updated_at": "2026-11-03T05:30:00Z"}])
+        self.assertEqual(response.json()["conversations"], [{"id": 12, "title": "질문", "updated_at": "2026-11-03T05:30:00Z", "is_pinned": False}])
         self.assertEqual(listing.call_args.args[1], USER_ID)  # 세션의 사용자 번호로만 조회한다
 
     def test_db_failure_is_503_without_details(self):
