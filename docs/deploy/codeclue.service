@@ -1,0 +1,20 @@
+# /etc/systemd/system/codeclue.service  (복사 후 systemctl enable --now codeclue. 순서는 docs/DEPLOY_AWS.md)
+# 서버가 켜질 때 자동으로 시작하고, 죽으면 다시 살린다. 사용자 이름(ubuntu)과 폴더 위치가 다르면 아래를 고친다.
+
+[Unit]
+Description=CodeClue (Django + gunicorn)
+After=network.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/SKN35-4th-2team
+# 비밀값과 설정은 back/.env에 있다 (Django 설정이 직접 읽는다)
+# worker 1개 + 스레드 8개: 워커마다 AI 모델을 따로 올려서 메모리를 쓰므로 워커는 늘리지 않는다.
+# timeout 300: 답변을 스트리밍하는 동안 연결이 끊기지 않게 한다.
+ExecStart=/home/ubuntu/SKN35-4th-2team/.venv/bin/gunicorn --chdir back config.wsgi:application \
+    --bind 127.0.0.1:8000 --workers 1 --threads 8 --timeout 300 --access-logfile -
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
