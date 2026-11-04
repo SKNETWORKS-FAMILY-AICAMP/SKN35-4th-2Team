@@ -11,6 +11,9 @@ const welcomeTemplate = document.getElementById("welcome").cloneNode(true);
 const fileInput = document.getElementById("file-input");
 const attachButton = document.getElementById("attach");
 const previewsEl = document.getElementById("previews");
+const searchInput = document.getElementById("conversation-search");
+const searchClear = document.getElementById("search-clear");
+const listLabel = document.getElementById("list-label");
 
 const MAX_IMAGES = 3; // 서버와 같은 한도 (서버가 다시 검사한다)
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 한 장 10MB (2MB를 넘는 이미지는 서버가 줄여서 저장한다)
@@ -19,6 +22,9 @@ const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"];
 let conversationId = null; // 지금 열려 있는 대화 (null이면 새 대화)
 let busy = false; // 답변을 받는 중에는 대화를 바꾸거나 지우지 못하게 한다
 let pending = []; // 보내기 전에 첨부한 이미지 파일들
+let searchQuery = ""; // 대화 제목 검색어 (빈 값이면 전체 목록)
+let listRequest = 0; // 목록 요청 번호. 늦게 도착한 이전 요청의 결과가 최신 결과를 덮지 않게 한다
+let searchTimer = null;
 
 // ---------------------------------------------------------------- 공통
 function csrfToken() {
@@ -211,6 +217,10 @@ function showAuth(message = "") {
   appEl.hidden = true;
   authEl.hidden = false;
   showAuthError(message);
+  clearTimeout(searchTimer); // 다음에 로그인한 사람에게 이전 검색어가 남지 않게
+  searchInput.value = "";
+  searchClear.hidden = true;
+  searchQuery = "";
 }
 
 function showApp(user) {
@@ -510,10 +520,11 @@ function confirmDialog({
 // ---------------------------------------------------------------- 대화 목록
 function renderConversationList(items) {
   listEl.replaceChildren();
+  listLabel.textContent = searchQuery ? `검색 결과 ${items.length}개` : "최근 대화";
   if (!items.length) {
     const empty = document.createElement("p");
     empty.className = "empty-list";
-    empty.textContent = "아직 대화가 없습니다.";
+    empty.textContent = searchQuery ? `'${searchQuery}'와(과) 일치하는 대화가 없어요.` : "아직 대화가 없습니다.";
     listEl.append(empty);
     return;
   }
@@ -685,15 +696,53 @@ function editConversationTitle(item, titleButton, menuButton) {
 }
 
 async function loadConversations() {
+  const request = ++listRequest;
+  const url = searchQuery ? `/api/conversations/?q=${encodeURIComponent(searchQuery)}` : "/api/conversations/";
   try {
-    const { ok, status, data } = await api("/api/conversations/");
+    const { ok, status, data } = await api(url);
+    if (request !== listRequest) return; // 그사이 검색어가 바뀌어 더 새 요청이 있다
     if (status === 401) return showAuth("로그인이 필요합니다.");
     if (ok) renderConversationList(data.conversations || []);
     else statusEl.textContent = data.error || "이전 대화를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.";
   } catch (error) {
+    if (request !== listRequest) return;
     statusEl.textContent = "이전 대화를 불러오지 못했습니다. 연결을 확인하고 다시 시도해 주세요.";
   }
 }
+
+// ---------------------------------------------------------------- 대화 제목 검색
+function setSearch(value) {
+  const query = value.split(/\s+/).filter(Boolean).join(" "); // 서버와 같은 방식으로 공백 정리
+  searchClear.hidden = !searchInput.value;
+  if (query === searchQuery) return;
+  searchQuery = query;
+  loadConversations();
+}
+
+searchInput.addEventListener("input", () => {
+  searchClear.hidden = !searchInput.value;
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => setSearch(searchInput.value), 250); // 글자마다 요청하지 않게 잠시 기다린다
+});
+searchInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    clearTimeout(searchTimer);
+    setSearch(searchInput.value);
+  } else if (event.key === "Escape" && searchInput.value) {
+    event.preventDefault();
+    event.stopPropagation(); // 모바일 메뉴가 같이 닫히지 않게
+    clearTimeout(searchTimer);
+    searchInput.value = "";
+    setSearch("");
+  }
+});
+searchClear.addEventListener("click", () => {
+  clearTimeout(searchTimer);
+  searchInput.value = "";
+  setSearch("");
+  searchInput.focus();
+});
 
 function newChat() {
   if (busy) return;

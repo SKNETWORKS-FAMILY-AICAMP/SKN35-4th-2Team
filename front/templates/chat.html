@@ -37,6 +37,13 @@
     <symbol id="i-plus" viewBox="0 0 24 24">
       <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
     </symbol>
+    <symbol id="i-search" viewBox="0 0 24 24">
+      <circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="2" />
+      <path d="m16 16 4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+    </symbol>
+    <symbol id="i-x" viewBox="0 0 24 24">
+      <path d="M7 7l10 10M17 7 7 17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+    </symbol>
     <symbol id="i-menu" viewBox="0 0 24 24">
       <path d="M4 7h16M4 12h16M4 17h10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
     </symbol>
@@ -217,7 +224,16 @@
       <button id="new-chat" type="button" class="new-chat"><svg>
           <use href="#i-plus" />
         </svg><span>새 대화</span></button>
-      <p class="list-label">최근 대화</p>
+      <!-- 대화 제목 검색: chat.js가 입력값을 GET /api/conversations/?q= 로 보낸다 -->
+      <div class="search" role="search">
+        <svg class="search-icon" aria-hidden="true"><use href="#i-search" /></svg>
+        <input id="conversation-search" type="search" maxlength="100" placeholder="대화 제목 검색"
+          aria-label="대화 제목 검색" autocomplete="off" spellcheck="false">
+        <button id="search-clear" type="button" class="search-clear" aria-label="검색어 지우기" hidden><svg>
+            <use href="#i-x" />
+          </svg></button>
+      </div>
+      <p id="list-label" class="list-label">최근 대화</p>
       <nav id="conversations" class="conversations" aria-label="내 대화 목록"></nav>
       <div class="account">
         <span id="user-avatar" class="avatar" aria-hidden="true"></span>
