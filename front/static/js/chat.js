@@ -45,6 +45,32 @@ function scrollToEnd() {
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
+// ---------------------------------------------------------------- 테마 (라이트/다크)
+// 고른 값은 이 브라우저에만 저장한다. 고른 적이 없으면 시스템 설정을 따른다(CSS가 처리).
+const THEME_KEY = "codeclue-theme";
+const systemDark = window.matchMedia("(prefers-color-scheme: dark)");
+
+function currentTheme() {
+  return document.documentElement.dataset.theme || (systemDark.matches ? "dark" : "light");
+}
+
+function updateThemeButtons() {
+  const next = currentTheme() === "dark" ? "라이트" : "다크";
+  document.querySelectorAll(".theme-toggle").forEach((button) => {
+    button.setAttribute("aria-label", `${next} 모드로 바꾸기`);
+    button.title = `${next} 모드`;
+  });
+}
+
+document.querySelectorAll(".theme-toggle").forEach((button) => button.addEventListener("click", () => {
+  const theme = currentTheme() === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = theme;
+  try { localStorage.setItem(THEME_KEY, theme); } catch (error) { /* 저장이 막혀 있어도 이번 화면에는 적용된다 */ }
+  updateThemeButtons();
+}));
+systemDark.addEventListener("change", updateThemeButtons);
+updateThemeButtons();
+
 function isSafeUrl(value) {
   try {
     const url = new URL(value);
@@ -58,7 +84,9 @@ function isSafeUrl(value) {
 const authForm = document.getElementById("auth-form");
 const authError = document.getElementById("auth-error");
 const authSubmit = document.getElementById("auth-submit");
-const authRules = document.getElementById("auth-rules");
+const authHints = document.querySelectorAll(".signup-only");
+const authTitle = document.querySelector(".auth-title");
+const authSub = document.querySelector(".auth-sub");
 const authUsername = document.getElementById("auth-username");
 const authPassword = document.getElementById("auth-password");
 const tabLogin = document.getElementById("tab-login");
@@ -70,7 +98,9 @@ function setAuthMode(mode) {
   tabLogin.setAttribute("aria-selected", String(mode === "login"));
   tabSignup.setAttribute("aria-selected", String(mode === "signup"));
   authSubmit.textContent = mode === "login" ? "로그인" : "가입하고 시작하기";
-  authRules.hidden = mode !== "signup";
+  authTitle.textContent = mode === "login" ? "다시 오신 걸 환영해요" : "CodeClue 시작하기";
+  authSub.textContent = mode === "login" ? "계정으로 로그인하고 대화를 이어가세요." : "아이디와 비밀번호만 있으면 바로 시작할 수 있어요.";
+  authHints.forEach((hint) => { hint.hidden = mode !== "signup"; });
   authPassword.autocomplete = mode === "login" ? "current-password" : "new-password";
   showAuthError("");
 }
@@ -78,9 +108,23 @@ function setAuthMode(mode) {
 function showAuthError(message) {
   authError.textContent = message;
   authError.hidden = !message;
+  if (!message) [authUsername, authPassword].forEach((field) => field.removeAttribute("aria-invalid"));
 }
 
+// 빈 칸이면 브라우저 기본 풍선 대신 화면 안에 알려 준다 (형식 검사는 서버가 한다)
+function checkAuthFields() {
+  const empty = [[authUsername, "아이디"], [authPassword, "비밀번호"]].filter(([field]) => !field.value.trim());
+  if (!empty.length) return true;
+  empty.forEach(([field]) => field.setAttribute("aria-invalid", "true"));
+  showAuthError(`${empty.map(([, name]) => name).join("와 ")}를 입력해 주세요.`);
+  empty[0][0].focus();
+  return false;
+}
+
+[authUsername, authPassword].forEach((field) => field.addEventListener("input", () => field.removeAttribute("aria-invalid")));
+
 function showAuth(message = "") {
+  closeNav();
   appEl.hidden = true;
   authEl.hidden = false;
   showAuthError(message);
@@ -90,6 +134,7 @@ function showApp(user) {
   authEl.hidden = true;
   appEl.hidden = false;
   userNameEl.textContent = user.username;
+  document.getElementById("user-avatar").textContent = (user.username || "?").charAt(0);
   authPassword.value = "";
   newChat();
   loadConversations();
@@ -101,8 +146,9 @@ tabSignup.addEventListener("click", () => setAuthMode("signup"));
 
 authForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  authSubmit.disabled = true;
   showAuthError("");
+  if (!checkAuthFields()) return;
+  authSubmit.disabled = true;
   try {
     const { ok, data } = await api(`/api/auth/${authMode}/`, { method: "POST", body: { username: authUsername.value, password: authPassword.value } });
     if (ok) showApp(data.user);
@@ -134,6 +180,43 @@ function addBubble(role, text) {
   return bubble;
 }
 
+// 답변 첫 조각이 오기 전까지 말풍선 안에 보여 주는 "점 세 개 + 지금 하는 일"
+function showTyping(bubble, label) {
+  const box = document.createElement("div");
+  box.className = "typing";
+  const dots = document.createElement("span");
+  dots.className = "dots";
+  dots.setAttribute("aria-hidden", "true");
+  dots.append(document.createElement("span"), document.createElement("span"), document.createElement("span"));
+  const text = document.createElement("span");
+  text.className = "typing-label";
+  text.textContent = label;
+  box.append(dots, text);
+  bubble.replaceChildren(box);
+  bubble.setAttribute("aria-busy", "true");
+  scrollToEnd();
+}
+
+function setTypingLabel(bubble, label) {
+  const text = bubble.querySelector(".typing-label");
+  if (text) text.textContent = label;
+}
+
+// 코드 블록의 복사 버튼 (말풍선은 답변 조각마다 다시 그려지므로 한 곳에서 받는다)
+messagesEl.addEventListener("click", async (event) => {
+  const button = event.target.closest(".copy-code");
+  if (!button) return;
+  const code = button.closest("pre")?.querySelector("code");
+  if (!code) return;
+  try {
+    await navigator.clipboard.writeText(code.textContent);
+    button.textContent = "복사됨";
+  } catch (error) {
+    button.textContent = "복사 실패";
+  }
+  setTimeout(() => { button.textContent = "복사"; }, 1500);
+});
+
 function showSources(sources) {
   const usable = (sources || []).filter((source) => source && isSafeUrl(source.url));
   if (!usable.length) return;
@@ -156,6 +239,32 @@ function showSources(sources) {
   messagesEl.appendChild(box);
   scrollToEnd();
 }
+
+// ---------------------------------------------------------------- 좁은 화면의 대화 목록 서랍
+const menuButton = document.getElementById("menu-button");
+const sidebarEl = document.getElementById("sidebar");
+const narrowScreen = window.matchMedia("(max-width: 760px)");
+
+function setNavOpen(open) {
+  appEl.classList.toggle("nav-open", open);
+  menuButton.setAttribute("aria-expanded", String(open));
+  menuButton.setAttribute("aria-label", open ? "대화 목록 닫기" : "대화 목록 열기");
+  sidebarEl.inert = narrowScreen.matches && !open; // 닫힌 서랍 안의 버튼에 Tab으로 들어가지 않게
+  if (open) document.getElementById("new-chat").focus();
+}
+
+function closeNav() {
+  if (appEl.classList.contains("nav-open")) setNavOpen(false);
+}
+
+
+menuButton.addEventListener("click", () => setNavOpen(!appEl.classList.contains("nav-open")));
+document.getElementById("backdrop").addEventListener("click", closeNav);
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && appEl.classList.contains("nav-open")) { closeNav(); menuButton.focus(); }
+});
+narrowScreen.addEventListener("change", () => setNavOpen(false)); // 화면 폭이 바뀌면 서랍을 닫힌 상태로 맞춘다
+setNavOpen(false);
 
 // ---------------------------------------------------------------- 대화 목록
 function renderConversationList(items) {
@@ -295,6 +404,7 @@ async function loadConversations() {
 
 function newChat() {
   if (busy) return;
+  closeNav();
   conversationId = null;
   messagesEl.replaceChildren(welcomeTemplate.cloneNode(true));
   statusEl.textContent = "";
@@ -302,7 +412,9 @@ function newChat() {
 }
 
 async function openConversation(id) {
-  if (busy || id === conversationId) return;
+  if (busy) return;
+  closeNav();
+  if (id === conversationId) return;
   try {
     const { ok, status, data } = await api(`/api/conversations/${id}/`);
     if (status === 401) return showAuth("로그인이 필요합니다.");
@@ -359,14 +471,22 @@ async function ask(question) {
   let answer = "";
   let failed = false;
   let renderQueued = false;
-  statusEl.textContent = "질문을 보내는 중…";
+  statusEl.textContent = "";
+  showTyping(answerBubble, "질문을 보내는 중…");
 
   // 조각이 올 때마다 마크다운을 다시 그리되, 화면 갱신 한 번에 한 번만 그린다
   const redraw = () => {
     renderQueued = false;
-    if (failed) return; // 오류 문구를 조각 그리기가 덮어쓰지 않게 한다
+    if (failed || !answer) return; // 오류 문구를 덮어쓰지 않고, 아직 조각이 없으면 기다림 표시를 둔다
     answerBubble.replaceChildren(renderMarkdown(answer));
+    answerBubble.removeAttribute("aria-busy");
     scrollToEnd();
+  };
+  const showError = (message) => {
+    failed = true;
+    answerBubble.textContent = message;
+    answerBubble.classList.add("error");
+    answerBubble.removeAttribute("aria-busy");
   };
 
   const body = { question };
@@ -385,11 +505,10 @@ async function ask(question) {
   if (!response.ok || !response.body) {
     let message = "서버에서 답을 받지 못했습니다.";
     try { message = (await response.json()).error || message; } catch (error) { /* 본문이 JSON이 아니면 기본 문장 */ }
-    answerBubble.textContent = message;
-    answerBubble.classList.add("error");
-    statusEl.textContent = "";
+    showError(message);
     return;
   }
+  setTypingLabel(answerBubble, "답변을 준비하는 중…");
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder("utf-8");
@@ -403,7 +522,7 @@ async function ask(question) {
       const { name, data } = parseEvent(buffer.slice(0, boundary));
       buffer = buffer.slice(boundary + 2);
       if (name === "stage") {
-        statusEl.textContent = data;
+        setTypingLabel(answerBubble, data);
       } else if (name === "token") {
         answer += data;
         if (!renderQueued) { renderQueued = true; requestAnimationFrame(redraw); }
@@ -414,16 +533,16 @@ async function ask(question) {
         redraw();
         if (data.conversation_id) conversationId = data.conversation_id;
       } else if (name === "error") {
-        failed = true;
-        answerBubble.textContent = data.message || "오류가 발생했습니다.";
-        answerBubble.classList.add("error");
+        showError(data.message || "오류가 발생했습니다.");
         if (data.conversation_id) conversationId = data.conversation_id; // 질문은 저장됐으니 같은 대화에서 이어간다
       }
     }
   }
 
-  statusEl.textContent = "";
-  if (!failed && !answerBubble.classList.contains("error")) redraw();
+  if (!failed) {
+    if (answer) redraw();
+    else showError("답변이 비어 있습니다. 다시 시도해 주세요."); // 연결이 끝났는데 아무것도 오지 않았다
+  }
   loadConversations(); // 새 대화가 생겼거나 제목이 바뀌었을 수 있다
 }
 
@@ -432,19 +551,30 @@ form.addEventListener("submit", async (event) => {
   const question = input.value.trim();
   if (!question || busy) return;
   input.value = "";
+  autoGrow();
   busy = true;
   sendButton.disabled = true;
   try {
     await ask(question);
   } catch (error) {
-    statusEl.textContent = "";
-    addBubble("assistant", "연결에 문제가 생겼습니다. 인터넷 연결을 확인하고 다시 시도해 주세요.").classList.add("error");
+    // 기다림 표시가 남아 있는 말풍선이 있으면 그 자리에 오류를 보여 준다
+    const pending = messagesEl.querySelector('.bubble[aria-busy="true"]') || addBubble("assistant", "");
+    pending.textContent = "연결에 문제가 생겼습니다. 인터넷 연결을 확인하고 다시 시도해 주세요.";
+    pending.classList.add("error");
+    pending.removeAttribute("aria-busy");
   } finally {
     busy = false;
     sendButton.disabled = false;
     input.focus();
   }
 });
+
+// 입력창은 글 줄 수만큼 늘어난다 (최대 높이는 CSS의 max-height)
+function autoGrow() {
+  input.style.height = "auto";
+  input.style.height = `${input.scrollHeight}px`;
+}
+input.addEventListener("input", autoGrow);
 
 input.addEventListener("keydown", (event) => {
   if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {

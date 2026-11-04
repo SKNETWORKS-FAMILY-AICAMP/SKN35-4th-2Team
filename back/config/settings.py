@@ -24,11 +24,13 @@ BASE_DIR = Path(__file__).resolve().parent.parent  # back/
 REPO_ROOT = BASE_DIR.parent  # 저장소 맨 위 (back/, front/, docs/가 있는 곳)
 FRONT_DIR = REPO_ROOT / "front"
 
-load_dotenv(BASE_DIR / ".env")
+load_dotenv()
 
 
 def env_list(name, default=""):
-    return [item.strip() for item in os.getenv(name, default).split(",") if item.strip()]
+    return [
+        item.strip() for item in os.getenv(name, default).split(",") if item.strip()
+    ]
 
 
 # ---------------------------------------------------------------- 보안
@@ -86,7 +88,11 @@ STATICFILES_DIRS = [FRONT_DIR / "static"]
 STATIC_ROOT = BASE_DIR / "staticfiles"  # collectstatic이 모으는 곳 (운영)
 STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
-    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage" if not DEBUG else "django.contrib.staticfiles.storage.StaticFilesStorage"},
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"
+        if not DEBUG
+        else "django.contrib.staticfiles.storage.StaticFilesStorage"
+    },
 }
 
 # ---------------------------------------------------------------- DB (Django 자체 용도: 로그인, 대화 저장)
@@ -106,10 +112,15 @@ SESSION_EXPIRE_AT_BROWSER_CLOSE = True  # 브라우저를 닫으면 로그인 �
 SESSION_COOKIE_AGE = 60 * 60 * 24  # 열어 둔 채로도 최대 24시간
 SESSION_COOKIE_SAMESITE = "Lax"
 # HTTPS로 서비스할 때만 1로 켠다. HTTP에서 켜면 쿠키가 전달되지 않아 로그인이 되지 않는다.
-SESSION_COOKIE_SECURE = CSRF_COOKIE_SECURE = os.getenv("DJANGO_SECURE_COOKIES", "0") == "1"
+SESSION_COOKIE_SECURE = CSRF_COOKIE_SECURE = (
+    os.getenv("DJANGO_SECURE_COOKIES", "0") == "1"
+)
 
 AUTH_PASSWORD_VALIDATORS = [
-    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator", "OPTIONS": {"min_length": 8}},
+    {
+        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
+        "OPTIONS": {"min_length": 8},
+    },
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
 ]
 
