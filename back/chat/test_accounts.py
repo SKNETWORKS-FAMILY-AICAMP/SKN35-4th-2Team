@@ -8,7 +8,7 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 from unittest import mock
 
-from django.test import Client, TestCase
+from django.test import Client, SimpleTestCase, TestCase
 
 from chat.accounts import check_signup_rules
 from src.db import UsernameTakenError
@@ -112,15 +112,15 @@ class LoginTests(PatchedTestCase):
         self.assertEqual(response.status_code, 503)
         self.assertNotIn("xyz", response.content.decode())
 
-    def test_login_changes_session_key(self):
-        """로그인 전에 받은 세션을 가로챈 사람이 로그인 후에도 쓰지 못하게, 로그인할 때 세션 키를 새로 만든다."""
+    def test_login_replaces_the_pre_login_cookie(self):
+        """로그인하면 로그인 전에 받은 쿠키는 새 쿠키로 바뀐다 (로그인 전 쿠키로는 로그인 상태가 되지 않는다)."""
         self.use(authenticate=mock.Mock(return_value=fake_user()))
-        session = self.client.session
-        session["anything"] = 1
-        session.save()
+        self.client.get("/api/auth/me/")
+        session = self.client.session  # 로그인 전 쿠키
         before = self.client.cookies["sessionid"].value
         post(self.client, LOGIN, CREDENTIALS)
         self.assertNotEqual(before, self.client.cookies["sessionid"].value)
+        self.assertEqual(self.client.session["user_id"], 7)
 
 
 class LogoutAndMeTests(PatchedTestCase):
@@ -194,3 +194,32 @@ class SignupRuleTests(PatchedTestCase):
         self.use(authenticate=mock.Mock(return_value=fake_user(username="a" * 25)))
         response = post(self.client, LOGIN, {"username": "a" * 25, "password": "simple"})
         self.assertEqual(response.status_code, 200)
+
+
+class NoSessionTableNeededTests(SimpleTestCase):
+    """로그인 상태를 서명된 쿠키에 담으므로, manage.py migrate를 하지 않은 새 PC에서도 가입·로그인이 된다.
+
+    SimpleTestCase는 장고 DB에 접근하면 오류를 내므로, 이 테스트가 통과하면 세션이 DB를 쓰지 않는다는 증명이다.
+    """
+
+    def run_with(self, **targets):
+        patches = [mock.patch("chat.accounts.db_session", fake_db_session)] + [mock.patch(f"chat.accounts.{n}", v) for n, v in targets.items()]
+        for patch in patches:
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def test_login_me_logout_work_without_django_database(self):
+        self.run_with(authenticate=mock.Mock(return_value=fake_user()))
+        self.assertEqual(post(self.client, LOGIN, CREDENTIALS).status_code, 200)
+        self.assertEqual(self.client.get(ME).json()["user"]["username"], "alice01")
+        self.assertEqual(self.client.post(LOGOUT).status_code, 200)
+        self.assertEqual(self.client.get(ME).json(), {"user": None})
+
+    def test_signup_works_without_django_database(self):
+        self.run_with(create_user=mock.Mock(return_value=fake_user()))
+        self.assertEqual(post(self.client, SIGNUP, CREDENTIALS).status_code, 200)
+        self.assertEqual(self.client.get(ME).json()["user"]["username"], "alice01")
+
+    def test_session_cookie_cannot_be_forged(self):
+        self.client.cookies["sessionid"] = "forged-value"
+        self.assertEqual(self.client.get(ME).json(), {"user": None})

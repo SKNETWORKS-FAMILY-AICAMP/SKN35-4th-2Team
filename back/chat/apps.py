@@ -1,3 +1,4 @@
+import logging
 import os
 import sys
 
@@ -25,7 +26,13 @@ class ChatConfig(AppConfig):
     verbose_name = "CodeClue 채팅"
 
     def ready(self):
+        from . import checks  # noqa: F401  (manage.py check에서 재정렬 모델 폴더를 확인하도록 등록)
+
         if should_warm_up(sys.argv, os.environ):
+            problem = checks.reranker_problem()
+            if problem:  # gunicorn으로 켤 때도 로그에 남긴다 (manage.py check는 gunicorn에서는 실행되지 않는다)
+                logging.getLogger(__name__).warning("%s %s", problem, checks.RERANKER_HINT)
+
             from src.app.chat_service import warm_up
 
             warm_up()  # 별도 스레드에서 그래프, 재정렬 모델, 검색기를 미리 준비한다 (첫 질문 대기 단축)

@@ -32,6 +32,7 @@ dependencies = [
     "pymysql>=1.1",
     "alembic>=1.13",
     "certifi>=2024.2.2",
+    "truststore>=0.10",  # 학원/회사 네트워크의 인증서 문제 해결 (운영체제 인증서 저장소 사용)
 ]
 
 [dependency-groups]

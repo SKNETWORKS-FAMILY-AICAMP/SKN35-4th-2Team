@@ -117,6 +117,7 @@ python3 -c "import secrets; print(secrets.token_urlsafe(50))"
 > - `DJANGO_SECURE_COOKIES`는 **넣지 않습니다.** HTTP로 접속하는 동안 켜면 로그인이 되지 않습니다. HTTPS를 붙인 뒤에만 1로 켭니다.
 > - `DB_DATABASE`는 `skn35_4th`인지 확인하세요 (3차 DB `skn35_3rd`와 섞이지 않게).
 > - DB 테이블과 관리자 계정은 이미 `skn35_4th`에 만들어져 있어서, 서버에서 마이그레이션과 시드를 다시 할 필요가 없습니다.
+> - 로그인 상태는 서명된 쿠키에 담기므로 장고용 `migrate`도 필요 없습니다 (`DJANGO_SECRET_KEY`가 바뀌면 모두 로그아웃됩니다).
 
 ---
 
@@ -126,7 +127,6 @@ python3 -c "import secrets; print(secrets.token_urlsafe(50))"
 
 ```bash
 cd ~/SKN35-4th-2team
-uv run python back/manage.py migrate         # 로그인 세션용 작은 DB 파일(back/db.sqlite3) 생성
 uv run python back/manage.py collectstatic --noinput   # 화면 파일(CSS, JS) 모으기
 uv run python back/manage.py check           # 오류가 없어야 함
 ```
@@ -193,7 +193,6 @@ cd ~/SKN35-4th-2team
 git pull
 uv sync --no-dev
 uv run python back/manage.py collectstatic --noinput
-uv run python back/manage.py migrate
 sudo systemctl restart codeclue
 ```
 
