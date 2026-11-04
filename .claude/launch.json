@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "django-8001",
+      "runtimeExecutable": "/Users/parkchanryong/Desktop/SKN35-4th-2Team/.venv/bin/python",
+      "runtimeArgs": ["back/manage.py", "runserver", "127.0.0.1:8001", "--noreload"],
+      "port": 8001
+    }
+  ]
+}

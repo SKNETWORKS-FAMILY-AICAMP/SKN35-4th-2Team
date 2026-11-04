@@ -73,10 +73,20 @@ function renderMarkdown(source) {
       while (i < lines.length && !/^\s*```\s*$/.test(lines[i])) { body.push(lines[i]); i += 1; }
       i += 1; // 닫는 ```
       const pre = document.createElement("pre");
+      const head = document.createElement("div");
+      head.className = "code-head";
+      const lang = document.createElement("span");
+      lang.className = "code-lang";
+      lang.textContent = fence[1] || "";
+      const copy = document.createElement("button");
+      copy.type = "button";
+      copy.className = "copy-code"; // 누르면 chat.js가 코드를 복사한다
+      copy.textContent = "복사";
+      copy.setAttribute("aria-label", "코드 복사");
+      head.append(lang, copy);
       const code = document.createElement("code");
-      if (fence[1]) pre.dataset.lang = fence[1];
       code.textContent = body.join("\n");
-      pre.append(code);
+      pre.append(head, code);
       fragment.append(pre);
       continue;
     }

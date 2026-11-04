@@ -48,13 +48,13 @@ LangChain, LangGraph, MCP를 쓰다 보면 오류 메시지가 흔히 나오는�
 
 ## 2. 3차 프로젝트에서 달라진 점
 
-| | 3차 | 4차 (이 저장소) |
-|---|---|---|
-| 화면 | Streamlit (파이썬 한 덩어리) | **HTML / CSS / JavaScript** (`front/`) |
-| 서버 | Streamlit 내장 서버 | **Django** (`back/`) |
-| 답변 전달 | 화면 안에서 직접 호출 | **웹 API + 스트리밍(SSE)**: 답변이 한 글자씩 나타남 |
-| 실행 환경 | 로컬 | **AWS 클라우드 배포** (배포 절차는 [10장](#10-배포-aws)) |
-| 질의응답 엔진 | LangGraph, RAG, MCP, 멀티모달 | **그대로 재사용** (`back/src/`, 수정하지 않음) |
+|               | 3차                           | 4차 (이 저장소)                                          |
+| ------------- | ----------------------------- | -------------------------------------------------------- |
+| 화면          | Streamlit (파이썬 한 덩어리)  | **HTML / CSS / JavaScript** (`front/`)                   |
+| 서버          | Streamlit 내장 서버           | **Django** (`back/`)                                     |
+| 답변 전달     | 화면 안에서 직접 호출         | **웹 API + 스트리밍(SSE)**: 답변이 한 글자씩 나타남      |
+| 실행 환경     | 로컬                          | **AWS 클라우드 배포** (배포 절차는 [10장](#10-배포-aws)) |
+| 질의응답 엔진 | LangGraph, RAG, MCP, 멀티모달 | **그대로 재사용** (`back/src/`, 수정하지 않음)           |
 
 엔진을 새로 만들지 않고 그대로 재사용했기 때문에, 이번 프로젝트의 핵심은 **엔진을 웹 서비스로 안전하게 감싸는 것**입니다. 자세한 변경 내용은 [바뀐 부분과 설계 설명](<docs/팀 설명용/CHANGES_AND_DESIGN.md>)에 정리했습니다.
 
@@ -92,17 +92,17 @@ flowchart LR
 
 ## 5. 기술 스택
 
-| 영역 | 사용 기술 |
-|---|---|
-| 프론트엔드 | HTML, CSS, JavaScript (프레임워크 없음) |
-| 백엔드 | Python 3.12, Django 5.2 LTS, gunicorn, WhiteNoise |
-| 에이전트 | LangChain, LangGraph (Supervisor 구조) |
-| 검색 | Pinecone (의미 + 키워드 하이브리드), RRF 결합, ONNX int8 재정렬(bge-reranker-v2-m3) |
-| 도구 연동 | MCP (Python SDK 2.x, stdio 서버) |
-| 모델 | OpenAI gpt-4o-mini, text-embedding-3-small |
-| 데이터 저장 | TiDB Cloud (MySQL 호환), SQLAlchemy |
-| 배포 | AWS EC2, nginx, gunicorn |
-| 패키지 관리 | uv |
+| 영역        | 사용 기술                                                                           |
+| ----------- | ----------------------------------------------------------------------------------- |
+| 프론트엔드  | HTML, CSS, JavaScript (프레임워크 없음)                                             |
+| 백엔드      | Python 3.12, Django 5.2 LTS, gunicorn, WhiteNoise                                   |
+| 에이전트    | LangChain, LangGraph (Supervisor 구조)                                              |
+| 검색        | Pinecone (의미 + 키워드 하이브리드), RRF 결합, ONNX int8 재정렬(bge-reranker-v2-m3) |
+| 도구 연동   | MCP (Python SDK 2.x, stdio 서버)                                                    |
+| 모델        | OpenAI gpt-4o-mini, text-embedding-3-small                                          |
+| 데이터 저장 | TiDB Cloud (MySQL 호환), SQLAlchemy                                                 |
+| 배포        | AWS EC2, nginx, gunicorn                                                            |
+| 패키지 관리 | uv                                                                                  |
 
 ## 6. 실행 방법
 
@@ -165,33 +165,36 @@ SKN35-4th-2team/
 
 ## 8. 웹 API 규약
 
-| 주소 | 방식 | 설명 |
-|---|---|---|
-| `/` | GET | 채팅 화면 |
-| `/api/chat/` | POST | 질문 전송(로그인 필요), 답변은 SSE로 스트리밍. 질문, 답변, 출처는 DB에 저장 |
-| `/api/auth/signup/` | POST | 가입 (가입과 동시에 로그인, 항상 일반 계정). 아이디 영문 소문자·숫자·밑줄 3~20자, 비밀번호 8자 이상에 영문과 숫자 필수, 아이디와 비슷한 비밀번호는 거부 |
-| `/api/auth/login/` | POST | 로그인 (실패 시 401, 아이디 존재 여부는 알려 주지 않음) |
-| `/api/auth/logout/` | POST | 로그아웃 |
-| `/api/auth/me/` | GET | 현재 로그인한 사용자 (없으면 `{"user": null}`) |
-| `/api/conversations/` | GET | 내 대화 목록 (최근 수정순) |
-| `/api/conversations/<번호>/` | GET, DELETE | 대화 불러오기(출처 포함) / 삭제. 남의 대화는 404 |
-| `/api/health/` | GET | 서버 상태 확인 (`{"status": "ok"}`) |
+| 주소                         | 방식        | 설명                                                                                                                                                    |
+| ---------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/`                          | GET         | 채팅 화면                                                                                                                                               |
+| `/api/chat/`                 | POST        | 질문 전송(로그인 필요), 답변은 SSE로 스트리밍. 질문, 답변, 출처는 DB에 저장                                                                             |
+| `/api/auth/signup/`          | POST        | 가입 (가입과 동시에 로그인, 항상 일반 계정). 아이디 영문 소문자·숫자·밑줄 3~20자, 비밀번호 8자 이상에 영문과 숫자 필수, 아이디와 비슷한 비밀번호는 거부 |
+| `/api/auth/login/`           | POST        | 로그인 (실패 시 401, 아이디 존재 여부는 알려 주지 않음)                                                                                                 |
+| `/api/auth/logout/`          | POST        | 로그아웃                                                                                                                                                |
+| `/api/auth/me/`              | GET         | 현재 로그인한 사용자 (없으면 `{"user": null}`)                                                                                                          |
+| `/api/conversations/`        | GET         | 내 대화 목록 (최근 수정순)                                                                                                                              |
+| `/api/conversations/<번호>/` | GET, DELETE | 대화 불러오기(출처 포함) / 삭제. 남의 대화는 404                                                                                                        |
+| `/api/health/`               | GET         | 서버 상태 확인 (`{"status": "ok"}`)                                                                                                                     |
 
 **요청** `POST /api/chat/`
 
 ```json
-{"question": "LangGraph에서 checkpointer로 대화 상태를 저장하려면?", "conversation_id": 12}
+{
+  "question": "LangGraph에서 checkpointer로 대화 상태를 저장하려면?",
+  "conversation_id": 12
+}
 ```
 
 **응답** `text/event-stream` — 아래 이벤트가 순서대로 옵니다.
 
-| 이벤트 | 내용 |
-|---|---|
-| `stage` | 현재 처리 단계 이름 (예: "RAG · 공식 문서를 검색하는 중") |
-| `token` | 답변 조각 (여러 번) |
-| `sources` | 출처 목록 `[{title, url, ...}]` |
-| `done` | `{"answer": 전체 답변, "conversation_id": 대화 번호}` |
-| `error` | `{"message": 사용자에게 보여 줄 문장, "conversation_id": 대화 번호 또는 null}` (실패 시 `done` 대신) |
+| 이벤트    | 내용                                                                                                 |
+| --------- | ---------------------------------------------------------------------------------------------------- |
+| `stage`   | 현재 처리 단계 이름 (예: "RAG · 공식 문서를 검색하는 중")                                            |
+| `token`   | 답변 조각 (여러 번)                                                                                  |
+| `sources` | 출처 목록 `[{title, url, ...}]`                                                                      |
+| `done`    | `{"answer": 전체 답변, "conversation_id": 대화 번호}`                                                |
+| `error`   | `{"message": 사용자에게 보여 줄 문장, "conversation_id": 대화 번호 또는 null}` (실패 시 `done` 대신) |
 
 `conversation_id`는 이어서 질문할 때만 보내고(없으면 새 대화), 이전 대화(이력)는 서버가 DB에서 읽으므로 화면이 보내지 않습니다. 로그인하지 않았으면 `401`, 잘못된 요청은 `400`(JSON 오류 문장), 허용하지 않는 방식은 `405`, CSRF 검사에 실패하면 `403`을 돌려줍니다.
 
@@ -227,21 +230,23 @@ uv run python back/manage.py test chat
 **동작하는 것**: 가입·로그인, 질문 → 스트리밍 답변(마크다운) → 출처 표시, 대화 저장·목록·불러오기·삭제, 입력 검증, 웹 계층 테스트 53개
 
 **아직 하지 않은 것**
+
 - 이미지 입력(멀티모달) 화면: 엔진은 지원하지만 4차 화면의 업로드 UI는 아직 없습니다.
 - 관리자 화면(사용자 목록, 비밀번호 초기화): 3차 DB 계층에 기능은 있으나 4차 화면은 없습니다.
 - 로그인 시도 횟수 제한(무차별 대입 방지)
 
 **알려진 제약**
+
 - 서버 시작 시 모델 준비(웜업)와 재정렬 모델이 메모리를 사용하므로, 서버 사양이 너무 작으면 느려질 수 있습니다.
 - 문서 범위는 LangChain, LangGraph, MCP 공식 문서이며, 그 밖의 주제는 근거 부족으로 답합니다.
 
 ## 12. 문서
 
-| 문서 | 내용 |
-|---|---|
-| [바뀐 부분과 설계 설명](<docs/팀 설명용/CHANGES_AND_DESIGN.md>) | 3차 대비 변경점, 구조 설계의 이유, 질문 처리 흐름 |
-| [팀 규칙](<docs/팀 설명용/TEAM_RULES.md>) | 팀원용: 폴더별 담당, 작업 방법, 규칙 |
-| [AWS 배포 순서](docs/DEPLOY_AWS.md) | EC2, nginx, gunicorn 설정과 확인 절차, 문제 해결 (설정 파일은 `docs/deploy/`) |
+| 문서                                                            | 내용                                                                          |
+| --------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| [바뀐 부분과 설계 설명](<docs/팀 설명용/CHANGES_AND_DESIGN.md>) | 3차 대비 변경점, 구조 설계의 이유, 질문 처리 흐름                             |
+| [팀 규칙](<docs/팀 설명용/TEAM_RULES.md>)                       | 팀원용: 폴더별 담당, 작업 방법, 규칙                                          |
+| [AWS 배포 순서](docs/DEPLOY_AWS.md)                             | EC2, nginx, gunicorn 설정과 확인 절차, 문제 해결 (설정 파일은 `docs/deploy/`) |
 
 ## 13. 팀
 
