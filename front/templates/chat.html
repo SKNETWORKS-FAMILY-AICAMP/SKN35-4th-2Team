@@ -214,8 +214,10 @@
           <use href="#i-plus" />
         </svg><span>새 대화</span></button>
       <!-- 대화 제목 검색: chat.js가 입력값을 GET /api/conversations/?q= 로 보낸다 -->
-      <div class="search" role="search">
+      <div id="search" class="search" role="search">
         <svg class="search-icon" aria-hidden="true"><use href="#i-search" /></svg>
+        <span class="search-spinner" aria-hidden="true"></span>
+        <kbd id="search-shortcut" class="search-shortcut" aria-hidden="true">⌘K</kbd>
         <input id="conversation-search" type="search" maxlength="100" placeholder="대화 제목 검색"
           aria-label="대화 제목 검색" autocomplete="off" spellcheck="false">
         <button id="search-clear" type="button" class="search-clear" aria-label="검색어 지우기" hidden><svg>
