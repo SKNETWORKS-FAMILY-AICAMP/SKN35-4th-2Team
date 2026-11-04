@@ -13,5 +13,6 @@ urlpatterns = [
     path("api/auth/me/", accounts.me, name="me"),
     path("api/conversations/", conversations.conversation_list, name="conversation_list"),
     path("api/conversations/<int:conversation_id>/", conversations.conversation_detail, name="conversation_detail"),
+    path("api/conversations/<int:conversation_id>/pin/", conversations.conversation_pin, name="conversation_pin"),
     path("api/health/", views.health, name="health"),  # 배포 확인용
 ]

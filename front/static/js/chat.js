@@ -170,6 +170,15 @@ function renderConversationList(items) {
   items.forEach((item) => {
     const row = document.createElement("div");
     row.className = "conversation" + (item.id === conversationId ? " current" : "");
+    row.dataset.conversationId = item.id;
+    if (item.is_pinned) {
+      const badge = document.createElement("span");
+      badge.className = "pin-badge";
+      badge.textContent = "★";
+      badge.title = "고정된 대화";
+      badge.setAttribute("aria-label", "고정된 대화");
+      row.append(badge);
+    }
     const open = document.createElement("button");
     open.type = "button";
     open.className = "open";
@@ -190,7 +199,33 @@ function renderConversationList(items) {
     const rename = document.createElement("button");
     rename.type = "button";
     rename.textContent = "이름 변경";
-    actions.append(toggle, rename);
+    const pin = document.createElement("button");
+    pin.type = "button";
+    pin.textContent = item.is_pinned ? "고정 해제" : "대화 고정";
+    pin.addEventListener("click", async () => {
+      if (pin.disabled) return;
+      pin.disabled = true;
+      actions.open = false;
+      try {
+        const { ok, status, data } = await api(`/api/conversations/${item.id}/pin/`, {
+          method: "PATCH", body: { is_pinned: !item.is_pinned },
+        });
+        if (status === 401) return showAuth("로그인이 필요합니다.");
+        if (!ok) throw new Error(data.error || "고정 상태를 저장하지 못했습니다.");
+        statusEl.textContent = data.is_pinned ? "대화를 고정했습니다." : "대화 고정을 해제했습니다.";
+        await loadConversations();
+        const updated = listEl.querySelector(`[data-conversation-id="${item.id}"] summary`);
+        if (updated) updated.focus();
+      } catch (error) {
+        statusEl.textContent = `${error.message || "고정 상태 저장 실패."} 다시 시도해 주세요.`;
+        actions.open = true;
+        pin.focus();
+      } finally { pin.disabled = false; }
+    });
+    const menu = document.createElement("div");
+    menu.className = "conversation-menu";
+    menu.append(rename, pin);
+    actions.append(toggle, menu);
     actions.addEventListener("click", (event) => event.stopPropagation());
     actions.addEventListener("keydown", (event) => {
       if (event.key === "Escape") { actions.open = false; toggle.focus(); }
@@ -290,7 +325,10 @@ async function loadConversations() {
     const { ok, status, data } = await api("/api/conversations/");
     if (status === 401) return showAuth("로그인이 필요합니다.");
     if (ok) renderConversationList(data.conversations || []);
-  } catch (error) { /* 목록을 못 불러와도 질문은 계속할 수 있다 */ }
+    else statusEl.textContent = data.error || "이전 대화를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.";
+  } catch (error) {
+    statusEl.textContent = "이전 대화를 불러오지 못했습니다. 연결을 확인하고 다시 시도해 주세요.";
+  }
 }
 
 function newChat() {

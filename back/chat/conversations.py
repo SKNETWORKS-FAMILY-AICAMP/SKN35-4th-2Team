@@ -19,6 +19,7 @@ from django.views.decorators.http import require_http_methods
 from src.db import db_session, delete_conversation, list_conversations, list_messages
 
 from .accounts import current_user_id, error
+from .pins import PinsNotReadyError, pinned_conversations, set_conversation_pin, delete_pin
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,12 @@ def conversation_list(request):
         return error(LOGIN_REQUIRED, 401)
     try:
         with db_session() as session:
-            items = [{"id": c.id, "title": c.title, "updated_at": iso(c.updated_at)} for c in list_conversations(session, user_id)]
+            pinned = pinned_conversations(session, user_id)
+            pinned_ids = {c.id for c in pinned}
+            recent = list_conversations(session, user_id)
+            rows = pinned + [c for c in recent if c.id not in pinned_ids]
+            items = [{"id": c.id, "title": c.title, "updated_at": iso(c.updated_at),
+                      "is_pinned": c.id in pinned_ids} for c in rows]
     except Exception:
         logger.exception("대화 목록 DB 오류")
         return error(DB_PROBLEM, 503)
@@ -78,6 +84,7 @@ def conversation_detail(request, conversation_id):
             if request.method == "DELETE":
                 if not delete_conversation(session, conversation_id, user_id):
                     return error(NOT_FOUND, 404)
+                delete_pin(session, conversation_id, user_id)
                 return JsonResponse({})
             messages = list_messages(session, conversation_id, user_id)  # 남의 대화면 PermissionError
             title = messages[0].conversation.title if messages else "새 대화"
@@ -95,3 +102,29 @@ def conversation_detail(request, conversation_id):
         logger.exception("대화 DB 오류")
         return error(DB_PROBLEM, 503)
     return JsonResponse(payload)
+
+
+@require_http_methods(["PATCH"])
+def conversation_pin(request, conversation_id):
+    user_id = current_user_id(request)
+    if user_id is None:
+        return error(LOGIN_REQUIRED, 401)
+    try:
+        body = json.loads(request.body.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        return error("요청 형식이 올바르지 않습니다.", 400)
+    pinned = body.get("is_pinned") if isinstance(body, dict) else None
+    if type(pinned) is not bool:
+        return error("고정 여부는 true 또는 false여야 합니다.", 400)
+    try:
+        with db_session() as session:
+            set_conversation_pin(session, conversation_id, user_id, pinned)
+        return JsonResponse({"id": conversation_id, "is_pinned": pinned})
+    except PermissionError:
+        return error(NOT_FOUND, 404)
+    except PinsNotReadyError as problem:
+        logger.warning("고정 테이블 준비 필요: back 폴더에서 alembic -c chat/pins_alembic.ini upgrade head")
+        return error(str(problem), 503)
+    except Exception:
+        logger.exception("대화 고정 DB 오류")
+        return error("고정 상태를 저장하지 못했습니다. 다시 시도해 주세요.", 503)
