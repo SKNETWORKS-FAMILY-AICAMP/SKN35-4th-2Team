@@ -8,7 +8,7 @@ from sqlalchemy import select
 from src.db.engine import make_engine, init_db, make_session_factory, session_scope
 from src.db.models import Conversation, Message
 from src.db.repository import create_user, create_conversation, add_message, list_conversations
-
+from django.conf import settings
 
 class RenameTests(TestCase):
     def setUp(self):
@@ -39,6 +39,7 @@ class RenameTests(TestCase):
         session = client.session
         session["user_id"] = user
         session.save()
+        client.cookies[settings.SESSION_COOKIE_NAME] = session.session_key
 
     def rename(self, title, client=None):
         return (client or self.client).patch(self.url, json.dumps({"title": title}), content_type="application/json")
