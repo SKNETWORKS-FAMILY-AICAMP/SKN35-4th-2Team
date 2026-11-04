@@ -57,8 +57,13 @@
       <div id="status" class="status" role="status"></div>
 
       <form id="chat-form" class="composer">
-        <textarea id="question" rows="2" maxlength="4000" placeholder="질문을 입력하세요 (Enter 전송, Shift+Enter 줄바꿈)" aria-label="질문 입력"></textarea>
-        <button id="send" type="submit">보내기</button>
+        <div id="previews" class="previews" hidden></div>
+        <div class="composer-row">
+          <input id="file-input" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden>
+          <button id="attach" type="button" class="attach" aria-label="이미지 첨부" title="이미지 첨부 (최대 3장, 붙여넣기와 끌어놓기도 가능)">📎</button>
+          <textarea id="question" rows="2" maxlength="4000" placeholder="질문을 입력하세요 (Enter 전송, Shift+Enter 줄바꿈)" aria-label="질문 입력"></textarea>
+          <button id="send" type="submit">보내기</button>
+        </div>
       </form>
     </section>
   </div>

@@ -2,9 +2,10 @@
 //   POST /api/auth/signup/, /api/auth/login/  {"username", "password"}  → {"user": {...}} 또는 {"error": "..."}
 //   POST /api/auth/logout/ , GET /api/auth/me/ → {"user": {...} 또는 null}
 //   GET  /api/conversations/                → {"conversations": [{"id", "title", "updated_at"}]}
-//   GET  /api/conversations/<id>/           → {"id", "title", "messages": [{"role", "content", "sources"}]}
+//   GET  /api/conversations/<id>/           → {"id", "title", "messages": [{"role", "content", "sources", "images": [{"id"}]}]}
 //   DELETE /api/conversations/<id>/
-//   POST /api/chat/  {"question": "...", "conversation_id": 12 (이어서 질문할 때만)}
+//   GET  /api/attachments/<id>/             → 저장된 이미지 (썸네일, ?size=full이면 원본)
+//   POST /api/chat/  양식(FormData): question, conversation_id (이어서 질문할 때만), images (이미지 파일 최대 3장)
 //     응답은 stage(처리 단계) / token(답변 조각) / sources(출처) / done(전체 답변) / error(오류 문장) 이벤트
 // 답변은 renderMarkdown(markdown.js)으로 그리고, 서버가 준 글은 모두 textContent로만 넣는다(HTML로 실행되지 않게).
 
@@ -18,9 +19,17 @@ const sendButton = document.getElementById("send");
 const listEl = document.getElementById("conversations");
 const userNameEl = document.getElementById("user-name");
 const welcomeTemplate = document.getElementById("welcome").cloneNode(true);
+const fileInput = document.getElementById("file-input");
+const attachButton = document.getElementById("attach");
+const previewsEl = document.getElementById("previews");
+
+const MAX_IMAGES = 3; // 서버와 같은 한도 (서버가 다시 검사한다)
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 한 장 10MB (2MB를 넘는 이미지는 서버가 줄여서 저장한다)
+const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"];
 
 let conversationId = null; // 지금 열려 있는 대화 (null이면 새 대화)
 let busy = false; // 답변을 받는 중에는 대화를 바꾸거나 지우지 못하게 한다
+let pending = []; // 보내기 전에 첨부한 이미지 파일들
 
 // ---------------------------------------------------------------- 공통
 function csrfToken() {
@@ -118,17 +127,42 @@ document.getElementById("logout").addEventListener("click", async () => {
   if (busy) return;
   try { await api("/api/auth/logout/", { method: "POST" }); } catch (error) { /* 서버에 닿지 않아도 화면은 로그아웃 상태로 */ }
   authPassword.value = "";
+  clearPending();
   showAuth();
 });
 
 // ---------------------------------------------------------------- 말풍선
-function addBubble(role, text) {
+// images: 질문에 붙은 이미지 [{src, href}] (href가 있으면 누르면 원본이 새 탭에서 열린다)
+function addBubble(role, text, images = []) {
   const welcome = document.getElementById("welcome");
   if (welcome) welcome.remove();
   const bubble = document.createElement("div");
   bubble.className = `bubble ${role}`;
-  if (role === "assistant") bubble.replaceChildren(renderMarkdown(text));
-  else bubble.textContent = text;
+  if (role === "assistant") {
+    bubble.replaceChildren(renderMarkdown(text));
+  } else {
+    if (text) bubble.append(text); // 글자 그대로 넣는다 (HTML로 실행되지 않게)
+    if (images.length) {
+      const box = document.createElement("div");
+      box.className = "bubble-images";
+      images.forEach((image) => {
+        const picture = document.createElement("img");
+        picture.src = image.src;
+        picture.alt = "첨부 이미지";
+        if (image.href) {
+          const link = document.createElement("a");
+          link.href = image.href;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          link.append(picture);
+          box.append(link);
+        } else {
+          box.append(picture);
+        }
+      });
+      bubble.append(box);
+    }
+  }
   messagesEl.appendChild(bubble);
   scrollToEnd();
   return bubble;
@@ -197,6 +231,7 @@ async function loadConversations() {
 
 function newChat() {
   if (busy) return;
+  clearPending();
   conversationId = null;
   messagesEl.replaceChildren(welcomeTemplate.cloneNode(true));
   statusEl.textContent = "";
@@ -212,7 +247,8 @@ async function openConversation(id) {
     conversationId = data.id;
     messagesEl.replaceChildren();
     data.messages.forEach((message) => {
-      addBubble(message.role === "user" ? "user" : "assistant", message.content);
+      const images = (message.images || []).map((image) => ({ src: `/api/attachments/${image.id}/`, href: `/api/attachments/${image.id}/?size=full` }));
+      addBubble(message.role === "user" ? "user" : "assistant", message.content, images);
       if (message.role !== "user") showSources(message.sources);
     });
     statusEl.textContent = "";
@@ -255,8 +291,8 @@ function parseEvent(raw) {
   }
 }
 
-async function ask(question) {
-  addBubble("user", question);
+async function ask(question, files = []) {
+  addBubble("user", question, files.map((file) => ({ src: URL.createObjectURL(file) })));
   const answerBubble = addBubble("assistant", "");
   let answer = "";
   let failed = false;
@@ -271,12 +307,15 @@ async function ask(question) {
     scrollToEnd();
   };
 
-  const body = { question };
-  if (conversationId !== null) body.conversation_id = conversationId;
+  // 이미지를 함께 보낼 수 있으므로 양식(FormData)으로 보낸다. Content-Type은 브라우저가 경계 문자열과 함께 알아서 붙인다.
+  const body = new FormData();
+  body.append("question", question);
+  if (conversationId !== null) body.append("conversation_id", String(conversationId));
+  files.forEach((file) => body.append("images", file));
   const response = await fetch("/api/chat/", {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken() },
-    body: JSON.stringify(body),
+    headers: { "X-CSRFToken": csrfToken() },
+    body,
   });
 
   if (response.status === 401) {
@@ -329,21 +368,83 @@ async function ask(question) {
   loadConversations(); // 새 대화가 생겼거나 제목이 바뀌었을 수 있다
 }
 
+// ---------------------------------------------------------------- 이미지 첨부
+function showNotice(message) {
+  statusEl.textContent = message;
+  setTimeout(() => { if (statusEl.textContent === message) statusEl.textContent = ""; }, 4000);
+}
+
+function renderPreviews() {
+  previewsEl.replaceChildren();
+  previewsEl.hidden = pending.length === 0;
+  pending.forEach((file, index) => {
+    const box = document.createElement("div");
+    box.className = "preview";
+    const picture = document.createElement("img");
+    picture.src = URL.createObjectURL(file);
+    picture.alt = file.name || "붙여넣은 이미지";
+    picture.addEventListener("load", () => URL.revokeObjectURL(picture.src));
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.textContent = "✕";
+    remove.setAttribute("aria-label", "첨부 취소");
+    remove.addEventListener("click", () => { pending.splice(index, 1); renderPreviews(); });
+    box.append(picture, remove);
+    previewsEl.append(box);
+  });
+}
+
+function clearPending() {
+  pending = [];
+  fileInput.value = "";
+  renderPreviews();
+}
+
+function addFiles(fileList) {
+  for (const file of Array.from(fileList || [])) {
+    if (!IMAGE_TYPES.includes(file.type)) { showNotice("png, jpeg, webp 이미지만 첨부할 수 있어요."); continue; }
+    if (file.size > MAX_IMAGE_BYTES) { showNotice("한 장에 10MB 이하의 이미지만 첨부할 수 있어요."); continue; }
+    if (pending.length >= MAX_IMAGES) { showNotice(`이미지는 한 번에 ${MAX_IMAGES}장까지 첨부할 수 있어요.`); break; }
+    pending.push(file);
+  }
+  renderPreviews();
+}
+
+attachButton.addEventListener("click", () => fileInput.click());
+fileInput.addEventListener("change", () => { addFiles(fileInput.files); fileInput.value = ""; });
+
+input.addEventListener("paste", (event) => { // 캡처 화면을 Ctrl+V로 바로 붙여넣기
+  const images = Array.from(event.clipboardData?.files || []).filter((file) => file.type.startsWith("image/"));
+  if (images.length) { event.preventDefault(); addFiles(images); }
+});
+
+form.addEventListener("dragover", (event) => { event.preventDefault(); form.classList.add("dragging"); });
+form.addEventListener("dragleave", () => form.classList.remove("dragging"));
+form.addEventListener("drop", (event) => {
+  event.preventDefault();
+  form.classList.remove("dragging");
+  addFiles(event.dataTransfer?.files);
+});
+
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   const question = input.value.trim();
-  if (!question || busy) return;
+  const files = pending.slice();
+  if ((!question && !files.length) || busy) return; // 이미지만 보내도 된다
   input.value = "";
+  clearPending();
   busy = true;
   sendButton.disabled = true;
+  attachButton.disabled = true;
   try {
-    await ask(question);
+    await ask(question, files);
   } catch (error) {
     statusEl.textContent = "";
     addBubble("assistant", "연결에 문제가 생겼습니다. 인터넷 연결을 확인하고 다시 시도해 주세요.").classList.add("error");
   } finally {
     busy = false;
     sendButton.disabled = false;
+    attachButton.disabled = false;
     input.focus();
   }
 });

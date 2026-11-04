@@ -33,9 +33,9 @@ def source(url="https://docs.example.com/a", title="문서"):
     return SimpleNamespace(url=url, title=title, tech="langgraph", version="1.x", doc_type="docs")
 
 
-def message(role, content, sources=(), title="체크포인터 질문"):
+def message(role, content, sources=(), title="체크포인터 질문", images=()):
     return SimpleNamespace(
-        role=role, content=content, sources=list(sources), created_at=datetime(2026, 11, 3, 5, 30, 0),
+        role=role, content=content, sources=list(sources), attachments=list(images), created_at=datetime(2026, 11, 3, 5, 30, 0),
         conversation=SimpleNamespace(title=title),
     )
 

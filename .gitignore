@@ -72,6 +72,9 @@ uploads/
 back/data/onnx/
 back/data/*.zip
 
+# 다른 기수의 문서를 참고용으로 내려받아 둔 폴더 (남의 팀 자료라서 저장소에 올리지 않는다)
+test.example/
+
 # Django
 back/db.sqlite3
 back/staticfiles/

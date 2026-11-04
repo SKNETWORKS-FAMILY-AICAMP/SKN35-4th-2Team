@@ -39,8 +39,9 @@ Streamlit 화면과 쿠키 로그인을 위한 파일이라서 웹 서버 방식
 | `back/chat/urls.py` | 주소 연결 (`/`, `/api/chat/`, `/api/health/`) |
 | `back/chat/apps.py` | 서버가 켜질 때 모델을 미리 준비(웜업) |
 | `back/chat/accounts.py` | 가입, 로그인, 로그아웃, 내 정보 (계정은 3차 DB 계층 재사용, 서명된 쿠키 세션에 user_id만 저장(DB 세션 테이블 불필요), 가입 규칙은 3차보다 엄격하게 4차에서 추가 검사) |
-| `back/chat/tests.py`, `test_accounts.py` | 웹 계층 테스트 61개 |
-| `back/chat/conversations.py` | 대화 목록, 불러오기, 삭제 (소유자 확인은 3차 DB 계층) |
+| `back/chat/tests.py`, `test_accounts.py` | 웹 계층 테스트 112개 |
+| `back/chat/queries.py` | 대화 제목 검색, 제목 변경 (3차 DB 계층에 없는 기능이라, 코어는 수정하지 않고 코어의 모델을 그대로 써서 4차 쪽에 구현) |
+| `back/chat/conversations.py` | 대화 목록, 불러오기, 삭제, 저장된 이미지 보여 주기 (소유자 확인은 3차 DB 계층) |
 | `front/` | 채팅 화면: 로그인·가입, 대화 목록, 마크다운 답변 (`chat.html`, `chat.css`, `chat.js`, `markdown.js`) |
 | `pyproject.toml` | 의존성을 Django 중심으로 새로 정리 (Streamlit, torch 제거) |
 | `.env.example`, `.gitignore` | 환경변수 목록, 올리면 안 되는 파일 목록 |

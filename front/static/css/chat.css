@@ -108,7 +108,19 @@ button { font: inherit; cursor: pointer; }
 
 .status { min-height: 24px; padding: 0 20px; max-width: 860px; width: 100%; margin: 0 auto; font-size: 13px; color: var(--muted); }
 
-.composer { display: flex; gap: 10px; padding: 12px 20px 18px; max-width: 860px; width: 100%; margin: 0 auto; }
+.composer { display: flex; flex-direction: column; gap: 8px; padding: 12px 20px 18px; max-width: 860px; width: 100%; margin: 0 auto; }
+.composer.dragging .composer-row textarea { border-color: var(--accent); background: var(--accent-soft); }
+.composer-row { display: flex; gap: 10px; }
+.attach { padding: 0 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); font-size: 18px; }
+.attach:hover { border-color: var(--accent); }
+.attach:disabled { opacity: 0.5; cursor: not-allowed; }
+.previews { display: flex; flex-wrap: wrap; gap: 8px; }
+.preview { position: relative; width: 72px; height: 72px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--panel); }
+.preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.preview button { position: absolute; top: 2px; right: 2px; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: rgba(15, 23, 42, 0.75); color: #fff; font-size: 12px; line-height: 20px; }
+.bubble-images { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.bubble-images:first-child { margin-top: 0; }
+.bubble-images img { max-width: 160px; max-height: 160px; border-radius: 8px; display: block; background: rgba(255, 255, 255, 0.2); }
 .composer textarea { flex: 1; resize: none; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; font: inherit; background: var(--panel); }
 .composer textarea:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
 .composer button { padding: 0 22px; border: 0; border-radius: 12px; background: var(--accent); color: #fff; }
