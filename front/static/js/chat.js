@@ -14,6 +14,7 @@ const previewsEl = document.getElementById("previews");
 const searchInput = document.getElementById("conversation-search");
 const searchClear = document.getElementById("search-clear");
 const listLabel = document.getElementById("list-label");
+const searchBox = document.getElementById("search");
 
 const MAX_IMAGES = 3; // 서버와 같은 한도 (서버가 다시 검사한다)
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 한 장 10MB (2MB를 넘는 이미지는 서버가 줄여서 저장한다)
@@ -25,6 +26,7 @@ let pending = []; // 보내기 전에 첨부한 이미지 파일들
 let searchQuery = ""; // 대화 제목 검색어 (빈 값이면 전체 목록)
 let listRequest = 0; // 목록 요청 번호. 늦게 도착한 이전 요청의 결과가 최신 결과를 덮지 않게 한다
 let searchTimer = null;
+let shownQuery = null; // 목록에 마지막으로 그린 검색어 (바뀌었을 때만 등장 효과를 준다)
 
 // ---------------------------------------------------------------- 공통
 function csrfToken() {
@@ -172,6 +174,9 @@ function showAuth(message = "") {
   searchInput.value = "";
   searchClear.hidden = true;
   searchQuery = "";
+  shownQuery = null;
+  searchBox.classList.remove("loading");
+  listEl.classList.remove("is-loading");
 }
 
 function showApp(user) {
@@ -445,19 +450,79 @@ function confirmDialog({
 }
 
 // ---------------------------------------------------------------- 대화 목록
-function renderConversationList(items) {
-  listEl.replaceChildren();
-  listLabel.textContent = searchQuery ? `검색 결과 ${items.length}개` : "최근 대화";
-  if (!items.length) {
-    const empty = document.createElement("p");
-    empty.className = "empty-list";
-    empty.textContent = searchQuery ? `'${searchQuery}'와(과) 일치하는 대화가 없어요.` : "아직 대화가 없습니다.";
-    listEl.append(empty);
+// 제목 속 검색어를 <mark>로 감싼다. 글은 모두 textContent로 넣는다 (innerHTML을 쓰지 않는다).
+function appendHighlighted(parent, text, query) {
+  const words = query
+    .split(" ")
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length) // 긴 단어부터 맞춰야 겹칠 때 더 길게 칠해진다
+    .map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  if (!words.length) {
+    parent.textContent = text;
     return;
   }
-  items.forEach((item) => {
+  const pattern = new RegExp(`(${words.join("|")})`, "gi");
+  text.split(pattern).forEach((part, index) => {
+    if (!part) return;
+    if (index % 2 === 1) {
+      const mark = document.createElement("mark");
+      mark.className = "hit";
+      mark.textContent = part;
+      parent.append(mark);
+    } else {
+      parent.append(part);
+    }
+  });
+}
+
+function emptyListState() {
+  const empty = document.createElement("div");
+  empty.className = "empty-list";
+  const title = document.createElement("strong");
+  const sub = document.createElement("span");
+  if (searchQuery) {
+    empty.classList.add("empty-search");
+    empty.append(iconSvg("search"));
+    title.textContent = "일치하는 대화가 없어요";
+    sub.textContent = `'${searchQuery}' 대신 다른 단어로 찾아보세요.`;
+  } else {
+    title.textContent = "아직 대화가 없습니다.";
+    sub.textContent = "새 대화를 시작해 보세요.";
+  }
+  empty.append(title, sub);
+  return empty;
+}
+
+function renderConversationList(items) {
+  const animate = shownQuery !== null && shownQuery !== searchQuery; // 검색어가 바뀌었을 때만 움직인다
+  shownQuery = searchQuery;
+  listEl.replaceChildren();
+  listEl.classList.remove("list-enter");
+  if (animate) {
+    void listEl.offsetWidth; // 같은 클래스를 다시 붙여도 애니메이션이 처음부터 돌게 한다
+    listEl.classList.add("list-enter");
+  }
+  if (searchQuery) {
+    const label = `검색 결과${items.length}`;
+    if (listLabel.textContent !== label) { // 개수가 바뀔 때만 배지를 다시 만들어 튀어 오르게 한다
+      const badge = document.createElement("span");
+      badge.className = "count-badge" + (items.length ? "" : " zero");
+      badge.textContent = String(items.length);
+      badge.setAttribute("aria-label", `${items.length}개`);
+      listLabel.replaceChildren("검색 결과", badge);
+    }
+  } else if (listLabel.textContent !== "최근 대화") {
+    listLabel.textContent = "최근 대화";
+  }
+  listLabel.classList.toggle("searching", Boolean(searchQuery));
+  if (!items.length) {
+    listEl.append(emptyListState());
+    return;
+  }
+  items.forEach((item, index) => {
     const row = document.createElement("div");
     row.className = "conversation" + (item.id === conversationId ? " current" : "");
+    row.style.setProperty("--i", Math.min(index, 12)); // 순서대로 조금씩 늦게 나타난다 (12번째 이후는 같이)
     row.dataset.conversationId = item.id;
     if (item.is_pinned) {
       const badge = document.createElement("span");
@@ -470,7 +535,7 @@ function renderConversationList(items) {
     const open = document.createElement("button");
     open.type = "button";
     open.className = "open";
-    open.textContent = item.title || "새 대화";
+    appendHighlighted(open, item.title || "새 대화", searchQuery);
     open.title = item.title || "새 대화";
     open.addEventListener("click", () => openConversation(item.id));
     const remove = document.createElement("button");
@@ -625,14 +690,23 @@ function editConversationTitle(item, titleButton, menuButton) {
 async function loadConversations() {
   const request = ++listRequest;
   const url = searchQuery ? `/api/conversations/?q=${encodeURIComponent(searchQuery)}` : "/api/conversations/";
+  const searching = shownQuery !== null && shownQuery !== searchQuery; // 검색어가 바뀐 요청만 "찾는 중"을 보여 준다
+  if (searching) {
+    searchBox.classList.add("loading");
+    listEl.classList.add("is-loading");
+  }
   try {
     const { ok, status, data } = await api(url);
     if (request !== listRequest) return; // 그사이 검색어가 바뀌어 더 새 요청이 있다
+    searchBox.classList.remove("loading");
+    listEl.classList.remove("is-loading");
     if (status === 401) return showAuth("로그인이 필요합니다.");
     if (ok) renderConversationList(data.conversations || []);
     else statusEl.textContent = data.error || "이전 대화를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.";
   } catch (error) {
     if (request !== listRequest) return;
+    searchBox.classList.remove("loading");
+    listEl.classList.remove("is-loading");
     statusEl.textContent = "이전 대화를 불러오지 못했습니다. 연결을 확인하고 다시 시도해 주세요.";
   }
 }
@@ -664,6 +738,20 @@ searchInput.addEventListener("keydown", (event) => {
     setSearch("");
   }
 });
+// ⌘K(맥) / Ctrl+K, 또는 글을 쓰는 중이 아닐 때 / 를 누르면 검색창으로 간다
+const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+document.getElementById("search-shortcut").textContent = isMac ? "⌘K" : "Ctrl K";
+document.addEventListener("keydown", (event) => {
+  if (appEl.hidden || event.isComposing || document.querySelector("dialog[open]")) return;
+  const typing = event.target.closest?.("input, textarea, [contenteditable='true']");
+  const commandK = event.key.toLowerCase() === "k" && (isMac ? event.metaKey : event.ctrlKey) && !event.altKey;
+  if (!commandK && !(event.key === "/" && !typing && !event.metaKey && !event.ctrlKey)) return;
+  event.preventDefault();
+  if (narrowScreen.matches && !appEl.classList.contains("nav-open")) setNavOpen(true);
+  searchInput.focus();
+  searchInput.select();
+});
+
 searchClear.addEventListener("click", () => {
   clearTimeout(searchTimer);
   searchInput.value = "";
