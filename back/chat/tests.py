@@ -202,3 +202,38 @@ class UrlTests(SimpleTestCase):
     def test_named_urls(self):
         self.assertEqual(reverse("chat:chat_stream"), URL)
         self.assertEqual(reverse("chat:index"), "/")
+
+
+class RerankerModelCheckTests(SimpleTestCase):
+    """재정렬 모델 폴더가 없는 PC에서, 서버를 켤 때 이유와 해결 방법을 알려 주는지 확인한다."""
+
+    def problem(self, *, ready, backend="auto", has_sentence_transformers=False):
+        with mock.patch("src.rag.rerank_onnx.onnx_model_ready", return_value=ready),              mock.patch("src.const.config.RERANK_BACKEND", backend),              mock.patch("chat.checks.find_spec", return_value=object() if has_sentence_transformers else None):
+            from chat.checks import reranker_problem
+
+            return reranker_problem()
+
+    def test_no_problem_when_model_folder_is_ready(self):
+        self.assertIsNone(self.problem(ready=True))
+
+    def test_missing_model_folder_is_reported_with_the_path(self):
+        message = self.problem(ready=False)
+        self.assertIn("재정렬 모델 폴더가 없어서", message)
+        self.assertIn("model_int8.onnx", message)
+
+    def test_no_report_when_original_backend_is_chosen_or_available(self):
+        self.assertIsNone(self.problem(ready=False, backend="torch"))
+        self.assertIsNone(self.problem(ready=False, has_sentence_transformers=True))
+
+    def test_explicit_onnx_backend_is_reported_even_if_original_is_available(self):
+        self.assertIsNotNone(self.problem(ready=False, backend="onnx", has_sentence_transformers=True))
+
+    def test_django_check_returns_a_warning_with_hint(self):
+        from chat.checks import RERANKER_HINT, check_reranker_model
+
+        with mock.patch("chat.checks.reranker_problem", return_value="모델 없음"):
+            warnings = check_reranker_model(None)
+        self.assertEqual([w.id for w in warnings], ["chat.W001"])
+        self.assertEqual(warnings[0].hint, RERANKER_HINT)
+        with mock.patch("chat.checks.reranker_problem", return_value=None):
+            self.assertEqual(check_reranker_model(None), [])

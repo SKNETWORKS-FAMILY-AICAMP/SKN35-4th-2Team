@@ -34,7 +34,7 @@ uv run python back/manage.py runserver
 브라우저에서 `http://127.0.0.1:8000` → 질문이 되면 성공입니다.
 
 - 인증서 오류(`UnknownIssuer`)가 나면 `uv sync --system-certs`
-- 재정렬 모델 파일이 필요하면 종원에게 받기 (용량이 커서 깃에 없습니다)
+- **재정렬 모델 폴더가 꼭 필요합니다.** 질문에 답하려면 `back/data/onnx/bge-reranker-v2-m3-int8/` 안에 파일 4개가 있어야 합니다. 용량이 커서(약 570MB) 깃에 없으니 종원에게 `onnx` 폴더를 받아 `back/data/` 안에 넣으세요. 서버를 켰을 때 `chat.W001` 경고가 나오면 아직 없는 것입니다.
 
 ---
 
@@ -44,7 +44,7 @@ uv run python back/manage.py runserver
 |---|---|---|
 | 로그인·가입에서 "계정 정보를 확인하지 못했습니다" | `back/.env`가 없거나 DB 항목이 비어 있음 | 종원에게 `.env`를 받아 `back/.env`에 두기 (`DB_DATABASE=skn35_4th`) |
 | 로그인·가입에서 "서버 오류(500)" | 예전 코드를 쓰고 있음 | `git pull` → `uv sync --system-certs` 후 서버를 다시 켜기 |
-| 질문하면 "답변을 받지 못했습니다. 모델 설정과 인터넷 연결을 확인해 주세요." | 서버를 켠 터미널의 오류를 봐야 원인이 나옴. 학원 네트워크에서는 `CERTIFICATE_VERIFY_FAILED`(인증서)인 경우가 많음 | 최신 코드로 `uv sync --system-certs` 후 다시 시도. 그래도 안 되면 터미널의 오류 문장을 팀에 공유 |
+| 질문하면 "답변을 받지 못했습니다. 모델 설정과 인터넷 연결을 확인해 주세요." | **재정렬 모델 폴더(`back/data/onnx/`)가 없는 경우가 가장 많음** (용량 때문에 git에 없음). 서버를 켤 때 터미널에 `chat.W001` 경고가 나옴 | 종원에게 `onnx` 폴더를 받아 `back/data/` 안에 넣기 → 서버 다시 켜기. 경고가 없는데도 안 되면 터미널의 오류 문장을 팀에 공유 (학원 네트워크의 `CERTIFICATE_VERIFY_FAILED`는 `git pull` + `uv sync --system-certs`) |
 | `uv sync`에서 `UnknownIssuer` | 학원 네트워크의 인증서 | `uv sync --system-certs` |
 | 화면이 옛날 모양 | 브라우저 캐시 | `Ctrl + F5` |
 
