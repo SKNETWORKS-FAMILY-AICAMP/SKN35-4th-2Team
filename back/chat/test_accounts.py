@@ -86,7 +86,7 @@ class LoginTests(PatchedTestCase):
         self.use(authenticate=mock.Mock(return_value=None))
         response = post(self.client, LOGIN, CREDENTIALS)
         self.assertEqual(response.status_code, 401)
-        self.assertEqual(response.json()["error"], "아이디 또는 비밀번호가 올바르지 않습니다.")
+        self.assertEqual(response.json()["error"], "아이디 또는 비밀번호가 올바르지 않습니다. 다시 확인해 주세요.")
         self.assertNotIn("user_id", self.client.session)
 
     def test_missing_fields_are_400_and_do_not_touch_db(self):
@@ -196,11 +196,8 @@ class SignupRuleTests(PatchedTestCase):
         self.assertEqual(response.status_code, 200)
 
 
-class NoSessionTableNeededTests(SimpleTestCase):
-    """로그인 상태를 서명된 쿠키에 담으므로, manage.py migrate를 하지 않은 새 PC에서도 가입·로그인이 된다.
-
-    SimpleTestCase는 장고 DB에 접근하면 오류를 내므로, 이 테스트가 통과하면 세션이 DB를 쓰지 않는다는 증명이다.
-    """
+class SignedCookieSessionTests(TestCase):
+    """Sessions stay signed cookies; Axes/Captcha security state requires Django tables."""
 
     def run_with(self, **targets):
         patches = [mock.patch("chat.accounts.db_session", fake_db_session)] + [mock.patch(f"chat.accounts.{n}", v) for n, v in targets.items()]
@@ -208,14 +205,14 @@ class NoSessionTableNeededTests(SimpleTestCase):
             patch.start()
             self.addCleanup(patch.stop)
 
-    def test_login_me_logout_work_without_django_database(self):
+    def test_login_me_logout_keep_signed_cookie_sessions(self):
         self.run_with(authenticate=mock.Mock(return_value=fake_user()))
         self.assertEqual(post(self.client, LOGIN, CREDENTIALS).status_code, 200)
         self.assertEqual(self.client.get(ME).json()["user"]["username"], "alice01")
         self.assertEqual(self.client.post(LOGOUT).status_code, 200)
         self.assertEqual(self.client.get(ME).json(), {"user": None})
 
-    def test_signup_works_without_django_database(self):
+    def test_signup_keeps_signed_cookie_session(self):
         self.run_with(create_user=mock.Mock(return_value=fake_user()))
         self.assertEqual(post(self.client, SIGNUP, CREDENTIALS).status_code, 200)
         self.assertEqual(self.client.get(ME).json()["user"]["username"], "alice01")

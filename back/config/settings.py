@@ -50,6 +50,8 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "chat",
+    "axes",
+    "captcha",
 ]
 
 MIDDLEWARE = [
@@ -61,6 +63,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "axes.middleware.AxesMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -105,7 +108,7 @@ DATABASES = {
 
 # ---------------------------------------------------------------- 로그인 세션 (계정 자체는 3차 DB 계층이 관리하고, 장고는 user_id만 세션에 담는다)
 # 로그인 상태는 DB 테이블이 아니라 "서명된 쿠키"에 담는다 (비밀키로 서명해서 위조할 수 없다).
-# 그래서 manage.py migrate 없이도 로그인이 되고, 서버에 세션 DB 파일이 필요 없다.
+# 세션 자체는 DB를 사용하지 않지만, Axes·Captcha 보안 테이블에는 migrate가 필요하다.
 # 한계: 로그아웃은 브라우저의 쿠키를 지우는 방식이라, 이미 복사된 쿠키를 서버에서 미리 무효화할 수는 없다(24시간 안에 만료).
 SESSION_ENGINE = "django.contrib.sessions.backends.signed_cookies"
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True  # 브라우저를 닫으면 로그인 종료
@@ -133,3 +136,20 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # ---------------------------------------------------------------- 질문 처리 한도
 CHAT_IMAGE_UPLOAD_MAX_BYTES = 10_000_000  # 올릴 때 한 장의 최대 크기(10MB). 코어가 DB 한도(기본 2MB)를 넘는 이미지는 알아서 줄여서 저장한다
 CHAT_QUESTION_MAX_CHARS = 4000  # 이전 대화(이력)의 양은 3차 DB 계층이 HISTORY_MAX_TURNS, HISTORY_MAX_TOKENS로 정한다
+
+
+# SQLAlchemy accounts keep their existing authentication; Axes also protects Django admin.
+AUTHENTICATION_BACKENDS = [
+    "axes.backends.AxesStandaloneBackend",
+    "django.contrib.auth.backends.ModelBackend",
+]
+# Record credential failures, but never lock users or apply a cooldown.
+AXES_LOCK_OUT_AT_FAILURE = False
+AXES_COOLOFF_TIME = None
+AXES_LOCKOUT_PARAMETERS = [["username", "ip_address"]]
+AXES_RESET_ON_SUCCESS = True
+AXES_HANDLER = "axes.handlers.database.AxesDatabaseHandler"
+AXES_CLIENT_IP_CALLABLE = "chat.login_security.client_ip"
+LOGIN_TRUSTED_PROXY_IPS = env_list("LOGIN_TRUSTED_PROXY_IPS")
+# Axes and captcha now require the Django database, even with signed-cookie sessions.
+CAPTCHA_TIMEOUT = 5

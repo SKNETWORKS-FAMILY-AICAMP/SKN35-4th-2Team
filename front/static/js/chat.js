@@ -112,6 +112,51 @@ const authPassword = document.getElementById("auth-password");
 const tabLogin = document.getElementById("tab-login");
 const tabSignup = document.getElementById("tab-signup");
 let authMode = "login";
+const captchaBox = document.getElementById("login-captcha");
+const captchaImage = document.getElementById("captcha-image");
+const captchaValue = document.getElementById("captcha-value");
+const captchaError = document.getElementById("captcha-error");
+const captchaRefresh = document.getElementById("captcha-refresh");
+let captchaKey = "";
+
+function updateCaptcha(data) {
+  if (data.captcha_required === undefined) return;
+  const required = authMode === "login" && data.captcha_required;
+  captchaBox.hidden = !required;
+  captchaValue.required = Boolean(required);
+  captchaError.hidden = true;
+  captchaValue.removeAttribute("aria-invalid");
+  if (!required) {
+    captchaKey = "";
+    captchaValue.value = "";
+    captchaImage.removeAttribute("src");
+  } else if (data.captcha) {
+    captchaKey = data.captcha.key;
+    captchaImage.src = data.captcha.image_url;
+    captchaValue.value = "";
+  }
+}
+
+const authFailureNotice = document.getElementById("auth-failure-notice");
+function updateFailureNotice(data) {
+  if (typeof data.failure_count !== "number") return;
+  authFailureNotice.textContent = data.failure_notice || "";
+  authFailureNotice.hidden = authMode !== "login" || data.failure_count === 0;
+}
+
+captchaRefresh.addEventListener("click", async () => {
+  captchaRefresh.disabled = true;
+  try {
+    const { ok, data } = await api("/api/auth/captcha/", {
+      method: "POST", body: { username: authUsername.value },
+    });
+    updateFailureNotice(data);
+    if (ok) updateCaptcha(data);
+    else showAuthError(data.error || "보안문자를 불러오지 못했습니다.");
+  } catch (error) {
+    showAuthError("보안문자를 불러오지 못했습니다. 다시 시도해 주세요.");
+  } finally { captchaRefresh.disabled = false; }
+});
 
 function setAuthMode(mode) {
   // 로그인 ↔ 가입으로 바꾸면 적던 값을 비운다 (같은 탭을 다시 누르면 그대로 둔다)
@@ -120,6 +165,10 @@ function setAuthMode(mode) {
     authPassword.value = "";
   }
   authMode = mode;
+  if (mode === "signup") {
+    updateCaptcha({ captcha_required: false });
+    updateFailureNotice({ failure_count: 0 });
+  }
   tabLogin.setAttribute("aria-selected", String(mode === "login"));
   tabSignup.setAttribute("aria-selected", String(mode === "signup"));
   authSubmit.textContent = mode === "login" ? "로그인" : "가입하고 시작하기";
@@ -199,14 +248,38 @@ authForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   showAuthError("");
   if (!checkAuthFields()) return;
+  if (authMode === "login" && !captchaBox.hidden && !captchaValue.value.trim()) {
+    captchaError.textContent = "보안문자가 올바르지 않습니다. 다시 입력해 주세요.";
+    captchaError.hidden = false;
+    captchaValue.setAttribute("aria-invalid", "true");
+    captchaValue.focus();
+    return;
+  }
   authSubmit.disabled = true;
   try {
     const { ok, data } = await api(`/api/auth/${authMode}/`, {
       method: "POST",
-      body: { username: authUsername.value, password: authPassword.value },
+      body: {
+        username: authUsername.value, password: authPassword.value,
+        ...(authMode === "login" && !captchaBox.hidden
+          ? { captcha_key: captchaKey, captcha_value: captchaValue.value } : {}),
+      },
     });
-    if (ok) showApp(data.user);
-    else showAuthError(data.error || "요청을 처리하지 못했습니다.");
+    if (ok) {
+      updateCaptcha({ captcha_required: false });
+      updateFailureNotice({ failure_count: 0 });
+      showApp(data.user);
+    } else {
+      updateFailureNotice(data);
+      updateCaptcha(data);
+      const message = data.error || "요청을 처리하지 못했습니다.";
+      if (data.captcha_required && message.startsWith("보안문자가")) {
+        captchaError.textContent = message;
+        captchaError.hidden = false;
+        captchaValue.setAttribute("aria-invalid", "true");
+        captchaValue.focus();
+      } else showAuthError(message);
+    }
   } catch (error) {
     showAuthError("서버에 연결하지 못했습니다. 인터넷 연결을 확인해 주세요.");
   } finally {

@@ -192,7 +192,18 @@
               required aria-describedby="hint-password" placeholder="비밀번호를 입력하세요">
             <p id="hint-password" class="auth-hint signup-only" hidden>8자 이상, 영문과 숫자를 모두 포함, 아이디와 비슷하지 않게</p>
           </div>
+          <section id="login-captcha" class="login-captcha" hidden aria-labelledby="captcha-notice">
+            <p id="captcha-notice" class="auth-hint">안전한 로그인을 위해 아래 보안문자를 입력해 주세요.</p>
+            <div class="captcha-image-row">
+              <img id="captcha-image" alt="로그인 보안문자" width="180" height="60">
+              <button id="captcha-refresh" type="button" aria-label="다른 보안문자 받기">새로고침</button>
+            </div>
+            <label for="captcha-value">보안문자</label>
+            <input id="captcha-value" name="captcha_value" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="64" aria-describedby="captcha-notice captcha-error">
+            <p id="captcha-error" class="captcha-error" role="alert" hidden></p>
+          </section>
           <p id="auth-error" class="auth-error" role="alert" hidden></p>
+          <p id="auth-failure-notice" class="auth-hint" role="status" hidden></p>
           <button id="auth-submit" class="btn-primary" type="submit">로그인</button>
         </form>
       </div>
