@@ -100,13 +100,15 @@ flowchart TB
 
 | 항목 | 값 |
 | --- | --- |
-| 서버 | AWS EC2 1대, Ubuntu 24.04, 서울 리전 |
-| 사양 | t3.medium(4GB) 권장 — 실측 전 가정. 측정 후 아래에 실제 값을 기록 |
-| 주소 | `http://<Elastic IP>` — **배포 후 기재: ______________** |
+| 서버 | AWS EC2 1대(인스턴스 이름 `4th_2team`), Ubuntu, 서울 리전 |
+| 사양 | 인스턴스 유형 `t3.small` (vCPU 2, 메모리 2GiB), 리전 `ap-northeast-2`(서울), Elastic IP 연결. 처음 `t3.micro`(1GiB)로 배포했다가 메모리 부족으로 변경 — 실제 사용량은 아래 실측 표에 기록 |
+| 주소 | `http://3.38.62.192/` (Elastic IP, HTTP) |
 | 프로세스 | nginx(80) → gunicorn(내부 `127.0.0.1:8000`, systemd 서비스 `codeclue`) |
 | 정적 파일 | `collectstatic`으로 모아 WhiteNoise가 제공 |
 | 보안 그룹 | 22(SSH, 관리자 IP만), 80(전체), 443(HTTPS를 쓸 때). **8000은 열지 않는다** |
 | 서버 폴더 | `/home/ubuntu/SKN35-4th-2team` |
+| 이미지 저장 폴더 | `/home/ubuntu/codeclue-uploads` (`IMAGE_STORAGE_DIR`, 저장소 밖이라 재배포해도 유지) |
+| 스왑 | 2.0GiB (메모리 부족 시 보완) |
 | 비밀값 | `back/.env`(파일로 직접 전달, 저장소에 없음) |
 | HTTPS | 도메인이 있을 때만 적용. 없으면 HTTP + IP로 서비스(한계로 명시) |
 
@@ -114,7 +116,10 @@ flowchart TB
 | --- | --- | --- |
 | 서버 시작 후 첫 질문 응답 시간 | ______ 초 | |
 | 두 번째 이후 질문 응답 시간 | ______ 초 | |
-| 질문 처리 중 메모리 사용량(`free -h`) | ______ MB | |
+| 메모리 사용량 — `t3.micro` 시점(`free -h`) | 전체 909MiB 중 사용 815MiB, 사용 가능 94MiB. 스왑 2.0GiB 중 1.0GiB 사용 → 부족하여 `t3.small`로 변경 | 2026-11-05 |
+| 메모리 사용량 — `t3.small` 변경 후(`free -h`) | 전체 1.9GiB 중 사용 1.2GiB, 사용 가능 703MiB. 스왑 사용 60KiB | 2026-11-05 |
+| 메모리 사용량 — `t3.small`, 이미지 질문 답변 중(`free -h` 2회) | 전체 1.9GiB 중 사용 1.4GiB, 사용 가능 약 468~469MiB. 스왑 사용 60KiB(거의 안 씀) | 2026-11-05 |
+| 메모리 부족으로 인한 프로세스 강제 종료 기록(`dmesg`) | 없음 | 2026-11-05 |
 
 배포 절차: [AWS 배포 순서](DEPLOY_AWS.md)
 
