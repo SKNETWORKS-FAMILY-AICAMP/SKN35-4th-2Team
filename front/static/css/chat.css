@@ -746,12 +746,21 @@ button.sidebar-logo:focus-visible { outline: 2px solid var(--brand); outline-off
 }
 .search input::placeholder { color: var(--muted); }
 .search input::-webkit-search-cancel-button { display: none; } /* 브라우저 기본 ✕ 대신 직접 만든 버튼을 쓴다 */
+/* 누르면 테두리가 브랜드 그라데이션으로 바뀌고 한 번 빛이 퍼진다 */
 .search input:focus {
-  border-color: var(--brand);
-  background: var(--surface);
-  box-shadow: var(--ring);
+  border-color: transparent;
+  background:
+    linear-gradient(var(--surface), var(--surface)) padding-box,
+    var(--grad) border-box;
+  box-shadow:
+    0 0 0 4px color-mix(in srgb, var(--brand) 16%, transparent),
+    0 8px 22px -10px color-mix(in srgb, var(--brand) 70%, transparent);
+  animation: search-glow 0.6s ease-out;
 }
-.search:focus-within .search-icon { color: var(--brand); }
+.search:focus-within .search-icon {
+  color: var(--brand);
+  animation: icon-hop 0.5s cubic-bezier(0.3, 1.6, 0.5, 1);
+}
 .search-clear {
   position: absolute;
   right: 5px;
@@ -765,10 +774,164 @@ button.sidebar-logo:focus-visible { outline: 2px solid var(--brand); outline-off
   background: transparent;
   color: var(--muted);
   cursor: pointer;
+  transition: background 0.15s, color 0.15s, transform 0.2s;
 }
 .search-clear[hidden] { display: none; }
-.search-clear:hover { background: var(--surface-hover); color: var(--text); }
+.search-clear:hover { background: var(--brand-soft); color: var(--brand); transform: rotate(90deg); }
 .search-clear svg { width: 14px; height: 14px; }
+.search-clear:not([hidden]) { animation: spin-in 0.3s cubic-bezier(0.3, 1.6, 0.5, 1); }
+.search-icon { transition: color 0.15s, opacity 0.15s, transform 0.15s; }
+
+/* 찾는 중: 돋보기 자리에 도는 고리 (응답이 빠르면 보이지 않게 조금 늦게 나타난다) */
+.search-spinner {
+  position: absolute;
+  left: 11px;
+  width: 14px;
+  height: 14px;
+  border: 2px solid color-mix(in srgb, var(--brand) 22%, transparent);
+  border-top-color: var(--brand);
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+}
+.search.loading .search-spinner {
+  opacity: 1;
+  transition: opacity 0.15s 0.12s;
+  animation: spin 0.7s linear infinite;
+}
+.search.loading .search-icon {
+  opacity: 0;
+  transform: scale(0.6);
+  transition-delay: 0.12s;
+}
+
+/* 단축키 안내: 비어 있고 입력 중이 아닐 때만 */
+.search-shortcut {
+  position: absolute;
+  right: 8px;
+  padding: 2px 6px;
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px; /* 실제 키보드 키처럼 */
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+  transition: opacity 0.15s, transform 0.15s;
+}
+.search:hover .search-shortcut { color: var(--brand-text); border-color: color-mix(in srgb, var(--brand) 40%, var(--border-strong)); }
+.search:focus-within .search-shortcut,
+.search:has(input:not(:placeholder-shown)) .search-shortcut { opacity: 0; transform: scale(0.7); }
+
+/* 검색 중이면 목록 위로 빛이 지나가고 기존 결과는 흐려진다 */
+.conversations { position: relative; }
+.conversations.is-loading > * {
+  opacity: 0.35;
+  filter: blur(1px);
+  transition: opacity 0.2s 0.12s, filter 0.2s 0.12s;
+}
+.conversations.is-loading::after {
+  content: "";
+  position: absolute;
+  inset: 0 10px;
+  border-radius: 12px;
+  background: linear-gradient(100deg, transparent 20%, color-mix(in srgb, var(--brand) 18%, transparent) 50%, transparent 80%);
+  background-size: 220% 100%;
+  animation: sweep 1s ease-in-out infinite;
+  pointer-events: none;
+}
+
+/* 제목 속 일치한 글자: 형광펜으로 긋듯 왼쪽부터 칠해진다 */
+.conversation .open mark.hit {
+  padding: 0 2px;
+  margin: 0 -1px;
+  border-radius: 4px;
+  background: linear-gradient(90deg,
+      color-mix(in srgb, var(--brand-1) 34%, transparent),
+      color-mix(in srgb, var(--brand-3) 30%, transparent)) no-repeat left / 100% 100%;
+  color: var(--text);
+  font-weight: 700;
+}
+.list-enter .conversation .open mark.hit {
+  animation: highlight-sweep 0.5s cubic-bezier(0.3, 0.8, 0.3, 1) backwards;
+  animation-delay: calc(var(--i, 0) * 45ms + 0.22s);
+}
+
+/* 검색어가 바뀌면 결과가 왼쪽에서 하나씩 미끄러져 들어온다 */
+.list-enter .conversation {
+  animation: list-in 0.45s cubic-bezier(0.2, 1.2, 0.4, 1) backwards; /* 끝난 뒤에는 효과가 남지 않아야 검색 중 흐림이 먹는다 */
+  animation-delay: calc(var(--i, 0) * 45ms);
+}
+.list-enter .empty-list { animation: list-in 0.4s cubic-bezier(0.2, 1.2, 0.4, 1) backwards; }
+.list-enter .empty-search svg { animation: shake 0.6s 0.15s ease-in-out both, float 2.8s 0.8s ease-in-out infinite; }
+
+/* "검색 결과" 옆 개수 배지 */
+.list-label.searching { color: var(--brand-text); display: flex; align-items: center; gap: 6px; }
+.count-badge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--grad);
+  color: var(--on-brand);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  box-shadow: 0 3px 10px -3px color-mix(in srgb, var(--brand) 70%, transparent);
+  animation: badge-pop 0.45s cubic-bezier(0.3, 1.8, 0.5, 1);
+}
+.count-badge.zero { background: var(--surface-2); color: var(--muted); box-shadow: none; }
+
+@keyframes list-in {
+  from { opacity: 0; transform: translateX(-18px) scale(0.96); filter: blur(4px); }
+  to { opacity: 1; transform: none; filter: none; }
+}
+@keyframes highlight-sweep {
+  from { background-size: 0% 100%; }
+  to { background-size: 100% 100%; }
+}
+@keyframes badge-pop {
+  0% { transform: scale(0.3); opacity: 0; }
+  60% { transform: scale(1.25); opacity: 1; }
+  100% { transform: scale(1); }
+}
+@keyframes search-glow {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--brand) 45%, transparent), 0 8px 22px -10px color-mix(in srgb, var(--brand) 70%, transparent); }
+  100% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand) 16%, transparent), 0 8px 22px -10px color-mix(in srgb, var(--brand) 70%, transparent); }
+}
+@keyframes icon-hop {
+  0% { transform: none; }
+  40% { transform: translateY(-3px) rotate(-14deg) scale(1.2); }
+  100% { transform: none; }
+}
+@keyframes spin-in {
+  from { opacity: 0; transform: rotate(-120deg) scale(0.4); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes sweep {
+  from { background-position: 120% 0; }
+  to { background-position: -120% 0; }
+}
+@keyframes shake {
+  0%, 100% { transform: none; }
+  20% { transform: translateX(-5px) rotate(-8deg); }
+  40% { transform: translateX(5px) rotate(8deg); }
+  60% { transform: translateX(-3px) rotate(-4deg); }
+  80% { transform: translateX(3px) rotate(4deg); }
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
 
 .list-label {
   margin: 0;
@@ -858,13 +1021,36 @@ button.sidebar-logo:focus-visible { outline: 2px solid var(--brand); outline-off
 }
 
 .empty-list {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
   margin: 8px 12px;
-  padding: 14px;
+  padding: 18px 14px;
   border: 1px dashed var(--border-strong);
   border-radius: var(--radius);
   font-size: 13px;
   color: var(--muted);
   text-align: center;
+}
+.empty-list strong {
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 600;
+}
+.empty-list span {
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-all;
+}
+.empty-list svg {
+  width: 34px;
+  height: 34px;
+  margin-bottom: 6px;
+  padding: 8px;
+  border-radius: 50%;
+  background: var(--brand-soft);
+  color: var(--brand);
 }
 
 .account {
