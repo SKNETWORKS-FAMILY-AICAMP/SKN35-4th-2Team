@@ -2,6 +2,19 @@ const authEl = document.getElementById("auth");
 const appEl = document.getElementById("app");
 const messagesEl = document.getElementById("messages");
 const statusEl = document.getElementById("status");
+// One timer element is reused inside the active AI status container.
+const responseProgressEl = document.createElement("div");
+responseProgressEl.id = "response-progress";
+responseProgressEl.className = "response-progress";
+responseProgressEl.setAttribute("aria-live", "off");
+responseProgressEl.hidden = true;
+const responseProgressLabel = document.createElement("span");
+responseProgressLabel.textContent = "답변 생성 중";
+const responseElapsedEl = document.createElement("span");
+responseElapsedEl.id = "response-elapsed";
+responseElapsedEl.className = "response-elapsed";
+responseElapsedEl.setAttribute("aria-hidden", "true");
+responseProgressEl.append(responseProgressLabel, responseElapsedEl);
 const form = document.getElementById("chat-form");
 const input = document.getElementById("question");
 const sendButton = document.getElementById("send");
@@ -22,6 +35,8 @@ const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"];
 
 let conversationId = null; // 지금 열려 있는 대화 (null이면 새 대화)
 let busy = false; // 답변을 받는 중에는 대화를 바꾸거나 지우지 못하게 한다
+let responseRequestId = 0;
+let activeResponseRequest = null;
 let pending = []; // 보내기 전에 첨부한 이미지 파일들
 let searchQuery = ""; // 대화 제목 검색어 (빈 값이면 전체 목록)
 let listRequest = 0; // 목록 요청 번호. 늦게 도착한 이전 요청의 결과가 최신 결과를 덮지 않게 한다
@@ -215,6 +230,7 @@ function checkAuthFields() {
 );
 
 function showAuth(message = "") {
+  cancelActiveResponseRequest();
   closeNav();
   appEl.hidden = true;
   authEl.hidden = false;
@@ -352,7 +368,10 @@ function showTyping(bubble, label) {
   text.className = "typing-label";
   text.textContent = label;
   box.append(dots, text);
-  bubble.replaceChildren(box);
+  const processing = document.createElement("div");
+  processing.className = "response-processing";
+  processing.append(box);
+  bubble.replaceChildren(processing);
   bubble.setAttribute("aria-busy", "true");
   scrollToEnd();
 }
@@ -834,6 +853,7 @@ searchClear.addEventListener("click", () => {
 
 function newChat() {
   if (busy) return;
+  cancelActiveResponseRequest();
   closeNav();
   clearPending();
   conversationId = null;
@@ -844,6 +864,7 @@ function newChat() {
 
 async function openConversation(id) {
   if (busy) return;
+  cancelActiveResponseRequest();
   closeNav();
   if (id === conversationId) return;
   try {
@@ -923,100 +944,176 @@ function parseEvent(raw) {
   }
 }
 
+// Each request owns its clock, abort signal and queued frame. No DB timing is stored.
+function startResponseRequest(bubble) {
+  cancelActiveResponseRequest();
+  const request = {
+    id: ++responseRequestId, bubble, startedAt: performance.now(),
+    processing: bubble.querySelector(".response-processing"),
+    controller: new AbortController(), timer: null, frame: null, finished: false,
+  };
+  activeResponseRequest = request;
+  request.processing.append(responseProgressEl);
+  responseProgressEl.dataset.requestId = String(request.id);
+  responseProgressEl.title = "브라우저에서 측정한 요청 시작부터 답변 완료까지의 시간";
+  responseElapsedEl.textContent = " · 0.0초";
+  responseProgressEl.hidden = false;
+  request.timer = setInterval(() => {
+    if (activeResponseRequest !== request || !bubble.isConnected) {
+      if (activeResponseRequest === request) cancelActiveResponseRequest();
+      else clearInterval(request.timer);
+      return;
+    }
+    // Change only this text node. Do not rerender the answer or scroll on ticks.
+    responseElapsedEl.textContent = ` · ${((performance.now() - request.startedAt) / 1000).toFixed(1)}초`;
+  }, 100);
+  return request;
+}
+
+function finishResponseRequest(request, successful = false) {
+  if (request.finished) return;
+  request.finished = true;
+  clearInterval(request.timer);
+  if (request.frame !== null) cancelAnimationFrame(request.frame);
+  if (activeResponseRequest !== request) return;
+  if (successful && request.bubble.isConnected) {
+    const elapsed = ((performance.now() - request.startedAt) / 1000).toFixed(1);
+    const note = document.createElement("p");
+    note.className = "response-duration";
+    note.textContent = `응답 소요 시간 · ${elapsed}초`;
+    note.title = "브라우저에서 측정한 요청 시작부터 답변 완료까지의 시간";
+    request.bubble.insertAdjacentElement("afterend", note);
+  }
+  responseProgressEl.hidden = true;
+  request.processing.remove();
+  delete responseProgressEl.dataset.requestId;
+  activeResponseRequest = null;
+}
+
+function cancelActiveResponseRequest() {
+  const request = activeResponseRequest;
+  if (!request) return;
+  finishResponseRequest(request);
+  request.controller.abort();
+}
+
+// Navigation away must never leave an interval or outstanding request behind.
+window.addEventListener("pagehide", () => cancelActiveResponseRequest());
+
 async function ask(question, files = []) {
   addBubble(
-    "user",
-    question,
+    "user", question,
     files.map((file) => ({ src: URL.createObjectURL(file) })),
   );
   const answerBubble = addBubble("assistant", "");
   let answer = "";
   let failed = false;
-  let renderQueued = false;
+  let reader = null;
+  let refreshList = false;
   statusEl.textContent = "";
   showTyping(answerBubble, "질문을 보내는 중…");
 
-  // 조각이 올 때마다 마크다운을 다시 그리되, 화면 갱신 한 번에 한 번만 그린다
+  const body = new FormData();
+  body.append("question", question);
+  if (conversationId !== null) body.append("conversation_id", String(conversationId));
+  files.forEach((file) => body.append("images", file));
+
+  // Start immediately before the actual fetch, including upload and header wait.
+  const request = startResponseRequest(answerBubble);
+  const isCurrent = () => activeResponseRequest === request && answerBubble.isConnected;
   const redraw = () => {
-    renderQueued = false;
-    if (failed || !answer) return; // 오류 문구를 덮어쓰지 않고, 아직 조각이 없으면 기다림 표시를 둔다
-    answerBubble.replaceChildren(renderMarkdown(answer));
+    request.frame = null;
+    if (!isCurrent() || failed || !answer) return;
+    answerBubble.replaceChildren(request.processing, renderMarkdown(answer));
     answerBubble.removeAttribute("aria-busy");
     scrollToEnd();
   };
   const showError = (message) => {
+    if (!isCurrent()) return;
     failed = true;
     answerBubble.textContent = message;
     answerBubble.classList.add("error");
     answerBubble.removeAttribute("aria-busy");
   };
 
-  // 이미지를 함께 보낼 수 있으므로 양식(FormData)으로 보낸다. Content-Type은 브라우저가 경계 문자열과 함께 알아서 붙인다.
-  const body = new FormData();
-  body.append("question", question);
-  if (conversationId !== null)
-    body.append("conversation_id", String(conversationId));
-  files.forEach((file) => body.append("images", file));
-  const response = await fetch("/api/chat/", {
-    method: "POST",
-    headers: { "X-CSRFToken": csrfToken() },
-    body,
-  });
-
-  if (response.status === 401) {
-    answerBubble.remove();
-    showAuth("로그인이 필요합니다. 다시 로그인해 주세요.");
-    return;
-  }
-  if (!response.ok || !response.body) {
-    let message = "서버에서 답을 받지 못했습니다.";
-    try {
-      message = (await response.json()).error || message;
-    } catch (error) {
-      /* 본문이 JSON이 아니면 기본 문장 */
+  try {
+    const response = await fetch("/api/chat/", {
+      method: "POST",
+      headers: { "X-CSRFToken": csrfToken() }, body,
+      signal: request.controller.signal,
+    });
+    if (!isCurrent()) {
+      try { await response.body?.cancel(); } catch (error) { /* superseded response */ }
+      return;
     }
-    showError(message);
-    return;
-  }
-  setTypingLabel(answerBubble, "답변을 준비하는 중…");
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder("utf-8");
-  let buffer = "";
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    let boundary;
-    while ((boundary = buffer.indexOf("\n\n")) !== -1) {
-      const { name, data } = parseEvent(buffer.slice(0, boundary));
-      buffer = buffer.slice(boundary + 2);
-      if (name === "stage") {
-        setTypingLabel(answerBubble, data);
-      } else if (name === "token") {
-        answer += data;
-        if (!renderQueued) {
-          renderQueued = true;
-          requestAnimationFrame(redraw);
+    if (response.status === 401) {
+      answerBubble.remove();
+      showAuth("로그인이 필요합니다. 다시 로그인해 주세요.");
+      return;
+    }
+    if (!response.ok || !response.body) {
+      let message = "서버에서 답을 받지 못했습니다.";
+      try { message = (await response.json()).error || message; } catch (error) { /* default message */ }
+      showError(message);
+      return;
+    }
+    setTypingLabel(answerBubble, "답변을 준비하는 중…");
+    reader = response.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buffer = "";
+    while (isCurrent() && !failed) {
+      const { value, done } = await reader.read();
+      if (!isCurrent()) return;
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let boundary;
+      while ((boundary = buffer.indexOf("\n\n")) !== -1) {
+        if (!isCurrent()) return;
+        const { name, data } = parseEvent(buffer.slice(0, boundary));
+        buffer = buffer.slice(boundary + 2);
+        if (name === "stage") {
+          setTypingLabel(answerBubble, data);
+        } else if (name === "token") {
+          answer += data;
+          if (request.frame === null) request.frame = requestAnimationFrame(redraw);
+        } else if (name === "sources") {
+          showSources(data);
+        } else if (name === "done") {
+          answer = data.answer || answer;
+          refreshList = true;
+          if (data.conversation_id) conversationId = data.conversation_id;
+          if (!answer) { showError("답변이 비어 있습니다. 다시 시도해 주세요."); return; }
+          if (request.frame !== null) cancelAnimationFrame(request.frame);
+          redraw();
+          finishResponseRequest(request, true);
+          return;
+        } else if (name === "error") {
+          showError(data.message || "오류가 발생했습니다.");
+          if (data.conversation_id) conversationId = data.conversation_id;
+          refreshList = true;
+          return;
         }
-      } else if (name === "sources") {
-        showSources(data);
-      } else if (name === "done") {
-        answer = data.answer || answer; // 조각이 모자라도 전체 답변으로 맞춘다
-        redraw();
-        if (data.conversation_id) conversationId = data.conversation_id;
-      } else if (name === "error") {
-        showError(data.message || "오류가 발생했습니다.");
-        if (data.conversation_id) conversationId = data.conversation_id; // 질문은 저장됐으니 같은 대화에서 이어간다
       }
     }
+    if (isCurrent() && !failed) {
+      // Tokens alone do not prove completion: a disconnected stream may be partial.
+      showError(answer ? "답변이 완료되기 전에 연결이 종료되었습니다. 다시 시도해 주세요." : "답변이 비어 있습니다. 다시 시도해 주세요.");
+      refreshList = true;
+    }
+  } catch (error) {
+    if (isCurrent()) {
+      showError(error.name === "AbortError" ? "답변 요청이 중단되었습니다."
+        : error.name === "TimeoutError" ? "답변 요청 시간이 초과되었습니다. 다시 시도해 주세요."
+        : "연결에 문제가 생겼습니다. 인터넷 연결을 확인하고 다시 시도해 주세요.");
+    }
+  } finally {
+    finishResponseRequest(request);
+    if (reader) {
+      try { await reader.cancel(); } catch (error) { /* aborted or already closed */ }
+      reader.releaseLock();
+    }
+    if (refreshList && request.id === responseRequestId && answerBubble.isConnected) loadConversations();
   }
-
-  if (!failed) {
-    if (answer) redraw();
-    else showError("답변이 비어 있습니다. 다시 시도해 주세요."); // 연결이 끝났는데 아무것도 오지 않았다
-  }
-  loadConversations(); // 새 대화가 생겼거나 제목이 바뀌었을 수 있다
 }
 
 // ---------------------------------------------------------------- 이미지 첨부
@@ -1114,9 +1211,13 @@ form.addEventListener("submit", async (event) => {
   busy = true;
   sendButton.disabled = true;
   attachButton.disabled = true;
+  let submittedRequest;
   try {
-    await ask(question, files);
+    const task = ask(question, files);
+    submittedRequest = activeResponseRequest;
+    await task;
   } catch (error) {
+    if (activeResponseRequest && activeResponseRequest !== submittedRequest) return;
     // 기다림 표시가 남아 있는 말풍선이 있으면 그 자리에 오류를 보여 준다
     const pending =
       messagesEl.querySelector('.bubble[aria-busy="true"]') ||
@@ -1126,10 +1227,12 @@ form.addEventListener("submit", async (event) => {
     pending.classList.add("error");
     pending.removeAttribute("aria-busy");
   } finally {
-    busy = false;
-    sendButton.disabled = false;
-    attachButton.disabled = false;
-    input.focus();
+    if (!activeResponseRequest || activeResponseRequest === submittedRequest) {
+      busy = false;
+      sendButton.disabled = false;
+      attachButton.disabled = false;
+      input.focus();
+    }
   }
 });
 
