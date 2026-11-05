@@ -905,6 +905,7 @@ async function removeConversation(item) {
 }
 
 document.getElementById("new-chat").addEventListener("click", newChat);
+document.getElementById("sidebar-new-chat").addEventListener("click", newChat);
 
 // ---------------------------------------------------------------- 서버가 보내는 이벤트 읽기
 // 이벤트 한 건("event: 이름\ndata: JSON\n\n")을 읽는다

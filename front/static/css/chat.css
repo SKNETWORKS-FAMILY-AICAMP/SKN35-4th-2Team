@@ -283,6 +283,25 @@ kbd {
   gap: 10px;
 }
 
+button.sidebar-logo {
+  appearance: none;
+  -webkit-appearance: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  box-shadow: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+button.sidebar-logo:hover,
+button.sidebar-logo:active { background: transparent; border: 0; box-shadow: none; }
+button.sidebar-logo:focus:not(:focus-visible) { outline: none; }
+button.sidebar-logo:focus-visible { outline: 2px solid var(--brand); outline-offset: 6px; }
+
 .brand-mark {
   width: 30px;
   height: 30px;
