@@ -2261,3 +2261,11 @@ button.sidebar-logo:focus-visible { outline: 2px solid var(--brand); outline-off
 .login-captcha input { width: 100%; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); color: var(--text); font: inherit; }
 .captcha-error { margin: 6px 0 0; color: var(--error); font-size: 13px; }
 .login-captcha :focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+
+/* Browser-measured request duration; ticks never touch the answer or live regions. */
+.response-processing { display: flex; flex-direction: column; gap: 5px; margin: 0 0 12px; }
+.response-processing .typing-label { min-width: 0; overflow-wrap: anywhere; }
+.response-progress { display: flex; align-items: baseline; gap: 0; margin: 0; min-height: 20px; color: var(--text-2); font-size: 12px; }
+.response-elapsed { min-width: 8ch; white-space: pre; font-variant-numeric: tabular-nums; }
+.response-duration { margin: -12px 0 20px 46px; color: var(--muted); font-size: 12px; line-height: 1.6; font-variant-numeric: tabular-nums; }
+@media (max-width: 760px) { .response-duration { margin-left: 0; } }
